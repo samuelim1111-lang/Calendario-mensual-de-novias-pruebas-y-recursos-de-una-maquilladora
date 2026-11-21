@@ -1,5 +1,8 @@
 # Agenda de novias · calendario, pruebas y recursos
 
+**Previsualización:** https://agenda-maquilladora-novias.vercel.app
+**Repositorio:** https://github.com/samuelim1111-lang/Calendario-mensual-de-novias-pruebas-y-recursos-de-una-maquilladora
+
 Agenda mensual para una maquilladora de novias (Montevideo). React 19 + Tailwind CSS 4 + localStorage. Todo el build sale en **un solo `dist/index.html`** sin dependencias de CDN (solo las fuentes de Google).
 
 ## Cómo correrlo
@@ -26,13 +29,13 @@ También se puede abrir `dist/index.html` directo con doble clic.
 
 ## Datos sintéticos
 
-Al abrir por primera vez (o con **Ajustes → Restaurar datos de prueba**) se llama a `crearSeed(new Date())`. Las fechas se calculan desde **hoy en hora de Montevideo**, así siempre caen en el mes actual y los dos siguientes:
+Al abrir por primera vez (si no existe la clave propia) (o con **Ajustes → Restaurar datos de prueba**) se llama a `crearSeed(new Date())`. Las fechas se calculan desde **hoy en hora de Montevideo**, así siempre caen en el mes actual y los dos siguientes:
 
 - **Sábado Completo**: el primer sábado con ≥ 4 días de margen, con 5 reservas (incluye el caso guiado de las 8:00).
 - **2 retenidas**: una retenida hace 46 h (vence ~2 h después de abrir) y otra hace 3 h.
 - **1 cancelada** por vencimiento (retenida hace 60 h).
 - **2 con saldo pagado** (una ya realizada hace 2 días).
-- **9 confirmadas (señadas)**, incluida una prueba de maquillaje generada con la regla «un mes antes».
+- **9 confirmadas (señadas)**, incluida una prueba de maquillaje generada con la regla «un mes antes». El briefing pide 2 retenidas, 4 señadas, 2 con saldo pagado y 1 cancelada (9) dentro de 14 reservas: las 5 restantes también son señadas, porque no hay otro estado posible.
 - La maquilladora tiene bloqueado el día hoy + 12.
 - Recursos: Valentina (maquilladora, principal), Lucía (asistente), Estudio Pocitos (espacio) y Kit de aerógrafo (equipo), que usan la Prueba de maquillaje (90 min) y la Novia · Civil (primeros 60 min).
 
