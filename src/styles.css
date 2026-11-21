@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", "Cormorant", Georgia, serif;
+  --color-crema: #fbf7f2;
+  --color-crema-2: #f3ece3;
+  --color-tinta: #4a3e3a;
+  --color-tinta-soft: #7a6a64;
+  --color-rosa-100: #f7e9e6;
+  --color-rosa-300: #e6c3bd;
+  --color-rosa-600: #b9787a;
+  --color-rosa-700: #96585b;
+  --color-oro: #b8955a;
+  --color-oro-100: #f4ecdd;
+  --color-oro-700: #82632f;
+  --color-salvia: #7e9a84;
+  --color-salvia-100: #e5eee6;
+  --color-salvia-700: #4f6b56;
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+body { margin: 0; background: var(--color-crema); }
+input[type="number"] { -moz-appearance: textfield; }
