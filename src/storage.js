@@ -1,6 +1,5 @@
 // Persistencia en localStorage con una clave propia. Nunca se tocan otras claves.
-import { crearSeed } from './seed.js';
-import { normalizarCorrelativos } from './domain.js';
+import { crearSeed, VERSION_DATOS } from './seed.js';
 
 export const STORAGE_KEY = 'kodarvia.agenda-maquilladora.v1';
 let simularFallo = false;
@@ -15,8 +14,11 @@ export function cargar() {
   if (!raw) return { data: crearSeed(), nuevo: true };
   try {
     const data = JSON.parse(raw);
-    if (!data || data.version !== 1 || !Array.isArray(data.reservas)) throw new Error('formato desconocido');
-    return { data: normalizarCorrelativos(data) };
+    if (!data || !Array.isArray(data.reservas)) throw new Error('formato desconocido');
+    if (data.version !== VERSION_DATOS) {
+      return { data: crearSeed(), nuevo: true, info: 'Se cargó el catálogo y la configuración nuevos del briefing con sus datos de prueba (los datos de la versión anterior no eran compatibles).' };
+    }
+    return { data };
   } catch (e) {
     return { data: crearSeed(), aviso: `Los datos guardados estaban dañados (${e.message}); se cargaron datos de prueba. La copia dañada no se borró hasta el próximo guardado.` };
   }

@@ -3,207 +3,206 @@ import assert from 'node:assert/strict';
 import {
   accionesPermitidas, aplicarTransicion, calcularPrecio, estadoDia, generarICS, horariosDisponibles,
   ocupacionDeReserva, oneMonthBefore, proponerPrueba, validarReserva, vencerRetenidas, verificarDisponibilidad,
-  nowWall, dayKey, reservasFuturasDeRecurso, TARIFAS_DEFECTO,
-  ejecutarPruebaGuiada, textoCompartir, normalizarCorrelativos,
+  nowWall, dayKey, reservasFuturasDeRecurso, extrasDe, ejecutarPruebaGuiada, textoCompartir, weekdayOfKey, TARIFAS_DEFECTO,
 } from '../src/domain.js';
 import { RECURSOS_SEED, SERVICIOS_SEED, crearSeed } from '../src/seed.js';
 
 const recursos = structuredClone(RECURSOS_SEED);
 const servicios = structuredClone(SERVICIOS_SEED);
+const tarifas = extrasDe(servicios, TARIFAS_DEFECTO).tarifas;
 const D = '2027-03-06'; // sábado
 const hm = (ms) => new Date(ms).toISOString().slice(11, 16);
-const res = (id, servicioId, hora, extra = {}) => ({
-  id, servicioId, inicio: `${D}T${hora}`, lugar: 'Estudio', km: 0, acompanantes: 0, postizas: false,
-  estado: 'Confirmada', novia: { nombre: id, email: `${id}@x.com` }, ...extra,
+const res = (id, servicioId, hora, extra = {}) => {
+  const s = servicios.find((x) => x.id === servicioId);
+  return {
+    id, servicioId, inicio: `${D}T${hora}`, lugar: s.admiteEstudio === false ? 'Domicilio' : 'Estudio', direccion: 'x', km: 5,
+    acompanantes: 0, postizas: false, estado: 'Señada', novia: { nombre: id, email: `${id}@x.com` }, ...extra,
+  };
+};
+const conAsignacion = (r, ctx) => ({ ...r, acompanantesCon: verificarDisponibilidad(r, ctx).acompanantesCon });
+const franja = (r, recursoId, rs = recursos) => {
+  const o = ocupacionDeReserva(r, servicios, rs).filter((x) => x.recursoId === recursoId);
+  return o.length ? `${hm(Math.min(...o.map((x) => x.inicio)))}–${hm(Math.max(...o.map((x) => x.fin)))}` : '—';
+};
+
+test('Caso de aceptación: novia a domicilio 30 km, 9:00, 2 acompañantes y pestañas', () => {
+  const s = servicios.find((x) => x.id === 's-novia-domicilio');
+  const p = calcularPrecio({ servicio: s, lugar: 'Domicilio', km: 30, acompanantes: 2, postizas: true }, tarifas);
+  assert.deepEqual([p.base, p.traslado, p.acomp, p.post, p.total, p.sena], [9000, 1800, 5600, 900, 17300, 8650]);
+  const ctx = { reservas: [], servicios, recursos };
+  const novia = conAsignacion(res('n', 's-novia-domicilio', '09:00', { km: 30, acompanantes: 2, postizas: true }), ctx);
+  assert.equal(novia.acompanantesCon, 'r-asistente');
+  assert.equal(franja(novia, 'r-maquilladora'), '08:00–10:45'); // 60 traslado + 90 novia + 15 pestañas
+  assert.equal(franja(novia, 'r-asistente'), '10:45–12:15'); // 2 × 45 acompañantes
+  assert.equal(franja(novia, 'r-estudio'), '—'); // a domicilio no se usa el estudio
 });
 
-test('Recursos con intervalos propios: caso guiado del briefing', () => {
-  const boda = res('boda', 's-boda', '08:00');
-  const occ = Object.fromEntries(ocupacionDeReserva(boda, servicios, recursos).map((o) => [o.recursoId, `${hm(o.inicio)}–${hm(o.fin)}`]));
-  assert.equal(occ['r-maquilladora'], '08:00–10:45');
-  assert.equal(occ['r-asistente'], '10:45–12:15');
-  assert.equal(occ['r-estudio'], '08:00–12:15');
-
-  const ctx = { reservas: [boda], servicios, recursos };
-  // Tarea a las 11:00 que solo usa a la maquilladora: NO se bloquea por la asistente.
-  const soloMaq = verificarDisponibilidad(res('t11', 's-retoque', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'x' }), ctx);
-  assert.equal(soloMaq.ok, true, soloMaq.motivos.join(' | '));
-  // Una que necesita a la asistente a las 11:00 sí se rechaza, con motivo.
-  const peinado = verificarDisponibilidad(res('p11', 's-peinado', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'x' }), ctx);
-  assert.equal(peinado.ok, false);
-  assert.match(peinado.motivos[0], /Lucía · Asistente no está libre de 10:45 a 12:15/);
-  // La maquilladora a las 10:00 está ocupada.
-  const maq10 = verificarDisponibilidad(res('m10', 's-retoque', '10:00'), ctx);
-  assert.equal(maq10.ok, false);
-  assert.match(maq10.motivos[0], /Valentina · Maquilladora no está libre de 08:00 a 10:45/);
+test('Recursos con intervalos propios: tarea a las 11 que solo usa a la maquilladora no se bloquea por la asistente', () => {
+  const ctx0 = { reservas: [], servicios, recursos };
+  const novia = conAsignacion(res('n', 's-novia-domicilio', '09:00', { km: 30, acompanantes: 2, postizas: true }), ctx0);
+  const ctx = { reservas: [novia], servicios, recursos };
+  assert.equal(verificarDisponibilidad(res('t', 's-retoque', '11:00'), ctx).ok, true);
+  const r1030 = verificarDisponibilidad(res('t', 's-retoque', '10:30'), ctx);
+  assert.equal(r1030.ok, false);
+  assert.match(r1030.motivos[0], /Maquilladora titular no está libre de 08:00 a 10:45/);
 });
 
-test('Límite de «recursos con intervalos propios»: los intervalos que se tocan no chocan', () => {
-  const ctx = { reservas: [res('boda', 's-boda', '08:00')], servicios, recursos };
-  const dom = { lugar: 'Domicilio', km: 5, direccion: 'x' };
-  // Asistente ocupada hasta las 12:15 exactas: a las 12:15 entra, a las 12:14 no.
-  assert.equal(verificarDisponibilidad(res('p', 's-peinado', '12:15', dom), ctx).ok, true);
-  const p1214 = verificarDisponibilidad(res('p', 's-peinado', '12:14', dom), ctx);
-  assert.equal(p1214.ok, false); assert.match(p1214.motivos[0], /Asistente no está libre de 10:45 a 12:15/);
-  // Maquilladora ocupada hasta las 10:45: a las 10:45 entra, a las 10:44 no.
-  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '10:45', dom), ctx).ok, true);
-  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '10:44', dom), ctx).ok, false);
-  // Un servicio que termina justo cuando empieza otro tampoco choca.
-  const conEstudio = { reservas: [res('boda', 's-boda', '10:00')], servicios, recursos };
-  assert.equal(verificarDisponibilidad(res('s', 's-social', '09:00'), conEstudio).ok, true); // termina 10:00 justo
-  assert.equal(verificarDisponibilidad(res('s', 's-social', '09:01'), conEstudio).ok, false);
+test('Límite: los intervalos que se tocan no chocan', () => {
+  const ctx0 = { reservas: [], servicios, recursos };
+  const novia = conAsignacion(res('n', 's-novia-domicilio', '09:00', { km: 30, acompanantes: 2, postizas: true }), ctx0);
+  const ctx = { reservas: [novia], servicios, recursos };
+  assert.equal(verificarDisponibilidad(res('t', 's-retoque', '10:45'), ctx).ok, true);
+  assert.equal(verificarDisponibilidad(res('t', 's-retoque', '10:44'), ctx).ok, false);
+  // Antes: un retoque 07:30–08:00 termina justo cuando empieza el traslado.
+  assert.equal(verificarDisponibilidad(res('t', 's-retoque', '07:30'), ctx).ok, true);
+  assert.equal(verificarDisponibilidad(res('t', 's-retoque', '07:31'), ctx).ok, false);
 });
 
-test('Canceladas no ocupan; días bloqueados y horario se respetan', () => {
-  const boda = res('boda', 's-boda', '08:00', { estado: 'Cancelada' });
-  assert.equal(verificarDisponibilidad(res('x', 's-social', '09:00'), { reservas: [boda], servicios, recursos }).ok, true);
-  const rb = structuredClone(recursos); rb[0].diasBloqueados = [D];
-  const v = verificarDisponibilidad(res('x', 's-social', '09:00'), { reservas: [], servicios, recursos: rb });
-  assert.equal(v.ok, false); assert.match(v.motivos[0], /bloqueado/);
-  const tarde = verificarDisponibilidad(res('x', 's-boda', '17:00'), { reservas: [], servicios, recursos });
-  assert.equal(tarde.ok, false); assert.match(tarde.motivos[0], /Fuera del horario/);
-  assert.equal(horariosDisponibles({ servicioId: 's-social', inicio: `${D}T08:00`, lugar: 'Estudio', acompanantes: 0 }, { reservas: [], servicios, recursos: rb }).length, 0);
+test('Acompañantes: con la asistente si está libre; si no, con la maquilladora sumando tiempo', () => {
+  const ctx0 = { reservas: [], servicios, recursos };
+  const novia1 = conAsignacion(res('n1', 's-novia-domicilio', '09:00', { km: 30, acompanantes: 2, postizas: true }), ctx0); // asistente 10:45–12:15
+  const ctx = { reservas: [novia1], servicios, recursos };
+  const b = verificarDisponibilidad(res('n2', 's-novia-estudio', '10:45', { acompanantes: 1 }), ctx);
+  assert.equal(b.ok, true); assert.equal(b.acompanantesCon, 'r-asistente'); // su acompañante va 12:15–13:00
+  const rb = structuredClone(recursos); rb[1].diasBloqueados = [D];
+  const c = verificarDisponibilidad(res('n2', 's-novia-estudio', '10:45', { acompanantes: 1 }), { reservas: [novia1], servicios, recursos: rb });
+  assert.equal(c.ok, true); assert.equal(c.acompanantesCon, 'r-maquilladora');
+  const n2 = { ...res('n2', 's-novia-estudio', '10:45', { acompanantes: 1 }), acompanantesCon: c.acompanantesCon };
+  assert.equal(franja(n2, 'r-maquilladora', rb), '10:45–13:00');
+  assert.equal(franja(n2, 'r-estudio', rb), '10:45–13:00'); // en el estudio, la acompañante ocupa el sillón
 });
 
-test('Equipos: ocupación propia, viajan a domicilio y solo bloquean a quien los usa', () => {
-  const prueba = res('pr', 's-prueba', '10:00');
-  const by = Object.fromEntries(ocupacionDeReserva(prueba, servicios, recursos).map((o) => [o.recursoId, `${hm(o.inicio)}–${hm(o.fin)}`]));
-  assert.equal(by['r-aerografo'], '10:00–11:30');
-  // A domicilio el estudio no se ocupa, pero el aerógrafo sí viaja.
-  const dom = ocupacionDeReserva(res('c', 's-civil', '09:00', { lugar: 'Domicilio', km: 5 }), servicios, recursos).map((o) => o.recursoId);
-  assert.deepEqual(dom.sort(), ['r-aerografo', 'r-maquilladora']);
-  // Servicio de la asistente con aerógrafo: el equipo ocupado lo bloquea; sin solapar, entra.
-  const sv = [...servicios, { id: 's-aero', nombre: 'Aerógrafo asistente', duracionMin: 60, precioUYU: 1, admiteDomicilio: true, tramos: [{ recursoId: 'r-asistente', offsetMin: 0, duracionMin: 60 }, { recursoId: 'r-aerografo', offsetMin: 0, duracionMin: 60 }] }];
-  const ctx = { reservas: [prueba], servicios: sv, recursos };
-  const choca = verificarDisponibilidad(res('a', 's-aero', '10:30', { lugar: 'Domicilio', km: 3 }), ctx);
-  assert.equal(choca.ok, false);
-  assert.match(choca.motivos.join(' '), /Kit de aerógrafo no está libre de 10:00 a 11:30/);
-  assert.ok(!choca.motivos.join(' ').includes('Asistente'));
-  assert.equal(verificarDisponibilidad(res('a', 's-aero', '11:30', { lugar: 'Domicilio', km: 3 }), ctx).ok, true);
-  // Un retoque (solo maquilladora) a las 12:00 no se ve afectado por el equipo.
-  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '12:00', { lugar: 'Domicilio', km: 3 }), ctx).ok, true);
+test('Horario: martes a domingo de 7 a 20; lunes sin reservas', () => {
+  const ctx = { reservas: [], servicios, recursos };
+  const lunes = '2027-03-08';
+  assert.equal(weekdayOfKey(lunes), 1);
+  const v = verificarDisponibilidad({ ...res('x', 's-retoque', '10:00'), inicio: `${lunes}T10:00` }, ctx);
+  assert.equal(v.ok, false); assert.match(v.motivos[0], /lunes/);
+  assert.equal(estadoDia(lunes, ctx), 'Cerrado');
+  assert.equal(horariosDisponibles({ ...res('x', 's-retoque', '10:00'), inicio: `${lunes}T10:00` }, ctx).length, 0);
+  assert.equal(verificarDisponibilidad(res('x', 's-retoque', '07:00'), ctx).ok, true);
+  const dom7 = verificarDisponibilidad(res('x', 's-novia-domicilio', '07:00'), ctx); // traslado desde las 6:00
+  assert.equal(dom7.ok, false); assert.match(dom7.motivos[0], /Fuera del horario/);
+  assert.equal(verificarDisponibilidad(res('x', 's-retoque', '19:30'), ctx).ok, true);
+  assert.equal(verificarDisponibilidad(res('x', 's-retoque', '19:45'), ctx).ok, false);
 });
 
-test('Acompañantes extienden a la asistente, no a la maquilladora', () => {
-  const occ = ocupacionDeReserva(res('b', 's-boda', '08:00', { acompanantes: 2 }), servicios, recursos);
-  const by = Object.fromEntries(occ.map((o) => [o.recursoId, `${hm(o.inicio)}–${hm(o.fin)}`]));
-  assert.equal(by['r-maquilladora'], '08:00–10:45');
-  assert.equal(by['r-asistente'], '10:45–13:35');
-  assert.equal(by['r-estudio'], '08:00–13:35');
+test('Lugar: prueba solo en estudio, novia a domicilio solo a domicilio', () => {
+  const ctx = { reservas: [], servicios, recursos };
+  assert.match(verificarDisponibilidad(res('x', 's-prueba', '10:00', { lugar: 'Domicilio' }), ctx).motivos[0], /no se hace a domicilio/);
+  assert.match(verificarDisponibilidad(res('x', 's-novia-domicilio', '10:00', { lugar: 'Estudio' }), ctx).motivos[0], /no se hace en el estudio/);
 });
 
-test('Día Completo cuando la maquilladora no tiene hueco del servicio más corto (60 min)', () => {
-  const base = [res('a', 's-boda', '08:00'), res('b', 's-retoque', '11:00', { lugar: 'Domicilio', km: 3 }),
-    res('c', 's-civil', '13:30', { lugar: 'Domicilio', km: 3 }), res('d', 's-civil', '15:45')];
+test('Cupo: no más de 2 novias por día', () => {
+  const ctx = { reservas: [res('a', 's-novia-estudio', '08:00'), res('b', 's-novia-estudio', '12:00')], servicios, recursos };
+  const v = verificarDisponibilidad(res('c', 's-novia-estudio', '16:00'), ctx);
+  assert.equal(v.ok, false); assert.match(v.motivos[0], /no se toman más de 2 por día/);
+  assert.equal(verificarDisponibilidad(res('p', 's-prueba', '16:00'), ctx).ok, true);
+  const cancel = { reservas: [res('a', 's-novia-estudio', '08:00'), res('b', 's-novia-estudio', '12:00', { estado: 'Cancelada' })], servicios, recursos };
+  assert.equal(verificarDisponibilidad(res('c', 's-novia-estudio', '16:00'), cancel).ok, true);
+});
+
+test('Cupo diario: Libre si la maquilladora no tiene nada, Parcial si le queda un hueco de 90, Completo si no', () => {
   const ctx = (rs) => ({ reservas: rs, servicios, recursos });
   assert.equal(estadoDia(D, ctx([])), 'Libre');
-  assert.equal(estadoDia(D, ctx(base)), 'Parcial'); // 17:45–20:00 libre
-  const lleno = [...base, res('e', 's-civil', '18:00')];
-  assert.equal(estadoDia(D, ctx(lleno)), 'Completo');
-  // Filtrando por asistente, el mismo día no está completo.
-  assert.equal(estadoDia(D, ctx(lleno), 'r-asistente'), 'Parcial');
-  // Un hueco de 59 min no alcanza; uno de 60 sí.
-  assert.equal(estadoDia(D, ctx([res('a', 's-civil', '08:00'), res('b', 's-civil', '10:59'), res('c', 's-boda', '12:59')])), 'Parcial');
+  const r = [res('a', 's-retoque', '07:00'), res('b', 's-prueba', '08:30'), res('c', 's-prueba', '11:00'), res('d', 's-prueba', '13:30'), res('e', 's-prueba', '16:00')];
+  assert.equal(estadoDia(D, ctx(r)), 'Parcial'); // queda 17:30–20:00
+  assert.equal(estadoDia(D, ctx([...r, res('f', 's-prueba', '18:15')])), 'Completo'); // 45 y 15
+  assert.equal(estadoDia(D, ctx([...r, res('f', 's-retoque', '18:59')])), 'Completo'); // 89 y 31: 89 no alcanza
+  assert.equal(estadoDia(D, ctx([...r, res('f', 's-retoque', '19:00')])), 'Parcial'); // 90 justo
 });
 
-test('Total = servicio + acompañantes + postizas + km; seña exactamente 50 %', () => {
-  const s = servicios.find((x) => x.id === 's-boda');
-  const p = calcularPrecio({ servicio: s, lugar: 'Domicilio', km: 15, acompanantes: 2, postizas: true }, TARIFAS_DEFECTO);
-  assert.equal(p.total, 18000 + 2 * 2500 + 900 + 15 * 60);
-  assert.equal(p.sena, p.total / 2);
-  assert.equal(p.sena + p.saldo, p.total);
-  const impar = calcularPrecio({ servicio: { precioUYU: 3501 }, lugar: 'Estudio', km: 30, acompanantes: 0, postizas: false });
-  assert.equal(impar.total, 3501); assert.equal(impar.sena, 1750.5);
-});
-
-test('Retenida sin seña se cancela a las 48 h y libera recursos', () => {
+test('Consulta no ocupa recursos; Fecha retenida vence a las 48 h y libera', () => {
   const t0 = Date.parse('2027-03-01T12:00:00Z');
-  const r = res('r', 's-social', '09:00', { estado: 'Retenida', fechaRetencion: new Date(t0).toISOString() });
+  const consulta = res('c', 's-novia-estudio', '10:00', { estado: 'Consulta' });
+  assert.equal(verificarDisponibilidad(res('n', 's-novia-estudio', '10:00'), { reservas: [consulta], servicios, recursos }).ok, true);
+  const r = res('r', 's-novia-estudio', '10:00', { estado: 'Fecha retenida', fechaRetencion: new Date(t0).toISOString() });
   assert.equal(vencerRetenidas([r], t0 + 47.9 * 3600000).cambios, 0);
   const { reservas, cambios } = vencerRetenidas([r], t0 + 48 * 3600000);
   assert.equal(cambios, 1); assert.equal(reservas[0].estado, 'Cancelada');
-  assert.equal(verificarDisponibilidad(res('n', 's-social', '09:00'), { reservas, servicios, recursos }).ok, true);
+  assert.equal(verificarDisponibilidad(res('n', 's-novia-estudio', '10:00'), { reservas, servicios, recursos }).ok, true);
 });
 
-test('Saldo pagado: no después del día anterior sin «Pago fuera de plazo»', () => {
-  const r = res('r', 's-social', '09:00');
-  assert.ok(aplicarTransicion(r, 'saldo', '2027-03-05T23:59', 'x').estado === 'Saldo pagado');
-  assert.throws(() => aplicarTransicion(r, 'saldo', '2027-03-06T00:00', 'x'), /Pago fuera de plazo/);
-  const ok = aplicarTransicion(r, 'saldo', '2027-03-07T10:00', 'x', { pagoFueraPlazo: true });
-  assert.equal(ok.estado, 'Saldo pagado'); assert.equal(ok.pagoFueraPlazo, true);
-  assert.throws(() => aplicarTransicion({ ...r, estado: 'Retenida' }, 'saldo', '2027-03-01T00:00', 'x'));
-  assert.deepEqual(accionesPermitidas({ ...r, estado: 'Cancelada' }, 'x'), []);
+test('Estados: retener desde consulta, seña, saldo con plazo, realizada y cancelación con seña retenida', () => {
+  const ctx = { reservas: [], servicios, recursos };
+  const c = res('c', 's-novia-domicilio', '09:00', { estado: 'Consulta', acompanantes: 2, km: 30, total: 16400, sena: 8200, saldo: 8200 });
+  const ret = aplicarTransicion(c, 'retener', '2027-01-01T00:00', '2027-01-01T03:00:00.000Z', { ctx });
+  assert.equal(ret.estado, 'Fecha retenida'); assert.equal(ret.acompanantesCon, 'r-asistente'); assert.ok(ret.fechaRetencion);
+  const sen = aplicarTransicion(ret, 'sena', '2027-01-01T00:00', 'x');
+  assert.equal(sen.estado, 'Señada');
+  assert.equal(aplicarTransicion(sen, 'saldo', '2027-03-05T23:59', 'x').estado, 'Saldo pagado');
+  assert.throws(() => aplicarTransicion(sen, 'saldo', '2027-03-06T00:00', 'x'), /Pago fuera de plazo/);
+  const fp = aplicarTransicion(sen, 'saldo', '2027-03-07T10:00', 'x', { pagoFueraPlazo: true });
+  assert.equal(fp.pagoFueraPlazo, true);
+  assert.ok(!accionesPermitidas(fp, '2027-03-06T08:59').some((a) => a.id === 'realizada'));
+  assert.equal(aplicarTransicion(fp, 'realizada', '2027-03-06T09:00', 'x').estado, 'Realizada');
+  const can = aplicarTransicion(sen, 'cancelar', '2027-01-02T00:00', 'x');
+  assert.equal(can.estado, 'Cancelada'); assert.equal(can.senaRetenida, sen.sena);
+  assert.match(can.historial.at(-1).motivo, /no devuelta/);
+  assert.deepEqual(accionesPermitidas(can, 'x'), []);
+  const ocupado = { reservas: [res('o', 's-novia-estudio', '09:00')], servicios, recursos };
+  assert.throws(() => aplicarTransicion(res('c2', 's-retoque', '09:30', { estado: 'Consulta' }), 'retener', '2027-01-01T00:00', 'x', { ctx: ocupado }), /no está libre/);
 });
 
-test('Agendar prueba: misma hora un mes antes; si está ocupado, siguiente día libre', () => {
-  const boda = res('boda', 's-boda', '08:30');
+test('Agendar prueba: misma hora un mes antes; si está ocupado o es lunes, siguiente día libre', () => {
+  const boda = res('boda', 's-novia-estudio', '10:00');
   assert.equal(oneMonthBefore('2027-03-31T10:00'), '2027-02-28T10:00');
   const libre = proponerPrueba(boda, 's-prueba', { reservas: [boda], servicios, recursos }, '2027-01-01T00:00');
-  assert.equal(libre.inicio, '2027-02-06T08:30'); assert.equal(libre.movida, false);
-  const ocupa = { ...res('o', 's-social', '09:00'), inicio: '2027-02-06T09:00' };
+  assert.equal(libre.inicio, '2027-02-06T10:00'); assert.equal(libre.movida, false);
+  const ocupa = { ...res('o', 's-retoque', '10:00'), inicio: '2027-02-06T10:00' };
   const movida = proponerPrueba(boda, 's-prueba', { reservas: [boda, ocupa], servicios, recursos }, '2027-01-01T00:00');
-  assert.equal(movida.inicio, '2027-02-07T08:30'); assert.equal(movida.movida, true);
-  assert.ok(movida.motivoOriginal);
+  assert.equal(movida.inicio, '2027-02-07T10:00'); assert.equal(movida.movida, true);
+  const ocupa2 = { ...ocupa, id: 'o2', inicio: '2027-02-07T10:00' };
+  const salta = proponerPrueba(boda, 's-prueba', { reservas: [boda, ocupa, ocupa2], servicios, recursos }, '2027-01-01T00:00');
+  assert.equal(salta.inicio, '2027-02-09T10:00'); // el 8 es lunes
 });
 
 test('.ics con fecha, hora, lugar y servicio', () => {
-  const r = { ...res('r1', 's-boda', '08:00', { lugar: 'Domicilio', direccion: 'Av. Brasil 2850, Pocitos', km: 4 }), total: 100, sena: 50, saldo: 50 };
-  const ics = generarICS(r, servicios[0], recursos, '2027-01-01T10:00:00.000Z');
-  assert.match(ics, /DTSTART;TZID=America\/Montevideo:20270306T080000/);
+  const r = { ...res('r1', 's-novia-domicilio', '09:00', { direccion: 'Av. Brasil 2850, Pocitos', km: 30, acompanantes: 2, postizas: true, acompanantesCon: 'r-asistente' }), total: 17300, sena: 8650, saldo: 8650 };
+  const ics = generarICS(r, servicios, recursos, '2027-01-01T10:00:00.000Z');
+  assert.match(ics, /DTSTART;TZID=America\/Montevideo:20270306T090000/);
   assert.match(ics, /DTEND;TZID=America\/Montevideo:20270306T121500/);
-  assert.match(ics, /SUMMARY:Novia · Día de boda · r1/);
-  assert.match(ics, /LOCATION:Domicilio: Av. Brasil 2850\\, Pocitos \(4 km\)/);
+  assert.match(ics, /SUMMARY:Maquillaje de novia a domicilio · r1/);
+  assert.match(ics, /LOCATION:Domicilio: Av. Brasil 2850\\, Pocitos \(30 km\)/);
   assert.ok(ics.split('\r\n').every((l) => new TextEncoder().encode(l).length <= 75));
 });
 
 test('Validación del formulario', () => {
   const ctx = { reservas: [], servicios, recursos };
-  const ok = { nombre: 'Ana', email: 'ana@x.com', servicioId: 's-boda', fecha: D, hora: '08:00', lugar: 'Domicilio', direccion: 'Calle 1', km: 10, acompanantes: 0 };
+  const ok = { nombre: 'Ana', email: 'ana@x.com', servicioId: 's-novia-domicilio', fecha: D, hora: '09:00', lugar: 'Domicilio', direccion: 'Calle 1', km: 30, acompanantes: 2, postizas: true };
   assert.deepEqual(validarReserva(ok, ctx, '2027-01-01T00:00'), {});
-  const e = validarReserva({ ...ok, email: 'ana@', km: 61, acompanantes: 5, hora: '20:00' }, ctx, '2027-01-01T00:00');
+  const e = validarReserva({ ...ok, email: 'ana@', km: 61, acompanantes: 5, hora: '06:45' }, ctx, '2027-01-01T00:00');
   assert.ok(e.email && e.km && e.acompanantes && e.hora);
-  assert.ok(validarReserva(ok, ctx, '2027-04-01T00:00').hora);
-  assert.ok(validarReserva({ ...ok, servicioId: 's-social' }, ctx, '2027-01-01T00:00').lugar);
-});
-
-test('Datos sintéticos: 14 reservas sin choques, sábado Completo, estados pedidos', () => {
-  const now = new Date();
-  const seed = crearSeed(now);
-  assert.equal(seed.recursos.length, 4); assert.equal(seed.servicios.length, 6); assert.equal(seed.reservas.length, 14);
-  const c = (e) => seed.reservas.filter((r) => r.estado === e).length;
-  assert.equal(c('Retenida'), 2); assert.equal(c('Cancelada'), 1); assert.equal(c('Saldo pagado'), 2);
-  assert.ok(c('Confirmada') >= 4);
-  for (const r of seed.reservas.filter((x) => x.estado !== 'Cancelada')) {
-    const v = verificarDisponibilidad(r, seed, { ignorarId: r.id });
-    assert.ok(v.ok, `${r.id} ${r.inicio}: ${v.motivos.join(' | ')}`);
-  }
-  const sabados = [...new Set(seed.reservas.map((r) => dayKey(r.inicio)))].filter((k) => estadoDia(k, seed) === 'Completo');
-  assert.equal(sabados.length, 1);
-  assert.equal(new Date(sabados[0] + 'T00:00Z').getUTCDay(), 6);
-  const venc = vencerRetenidas(seed.reservas, now.getTime());
-  assert.equal(venc.cambios, 0, 'ninguna retenida debería vencer al abrir');
-  assert.equal(vencerRetenidas(seed.reservas, now.getTime() + 2.1 * 3600000).cambios, 1, 'una vence en ~2 h');
-  assert.ok(reservasFuturasDeRecurso('r-maquilladora', seed, nowWall(now)).length > 0);
+  assert.ok(validarReserva({ ...ok, fecha: '2027-03-08' }, ctx, '2027-01-01T00:00').fecha);
+  assert.ok(validarReserva({ ...ok, servicioId: 's-retoque' }, ctx, '2027-01-01T00:00').acompanantes);
+  assert.deepEqual(validarReserva({ ...ok, tipo: 'consulta', fecha: '', hora: '' }, ctx, '2027-01-01T00:00'), {});
 });
 
 test('Prueba guiada en copia aislada: resultados esperados y catálogo intacto', () => {
-  const antesR = JSON.stringify(RECURSOS_SEED); const antesS = JSON.stringify(SERVICIOS_SEED);
-  const r = ejecutarPruebaGuiada(RECURSOS_SEED, SERVICIOS_SEED, '2027-03-06');
+  const antes = JSON.stringify([RECURSOS_SEED, SERVICIOS_SEED]);
+  const r = ejecutarPruebaGuiada(RECURSOS_SEED, SERVICIOS_SEED, TARIFAS_DEFECTO, D);
   assert.equal(r.ok, true, JSON.stringify(r.pasos, null, 1));
-  const obs = r.pasos.map((p) => p.observado);
-  assert.ok(obs.includes('08:00–10:45') && obs.includes('10:45–12:15'));
-  assert.match(obs[3], /^Se acepta/); assert.match(obs[4], /^Se rechaza: Lucía · Asistente no está libre de 10:45 a 12:15/);
-  assert.equal(JSON.stringify(RECURSOS_SEED), antesR); assert.equal(JSON.stringify(SERVICIOS_SEED), antesS);
+  assert.equal(JSON.stringify([RECURSOS_SEED, SERVICIOS_SEED]), antes);
 });
 
-test('Texto para compartir y correlativos', () => {
-  const seed = crearSeed(new Date('2026-11-21T12:00:00Z'));
-  assert.equal(seed.contador, 14);
-  assert.deepEqual(seed.reservas.map((x) => x.numero), Array.from({ length: 14 }, (_, i) => i + 1));
-  const t = textoCompartir(seed.reservas[0], seed.servicios[0], Date.now());
-  assert.match(t, /^Reserva N\.º 0001 · Novia · Día de boda/);
-  assert.match(t, /Seña \(50 %\)/);
-  const viejo = { ...seed, contador: undefined, reservas: seed.reservas.map(({ numero, ...x }) => x) };
-  const n = normalizarCorrelativos(viejo);
-  assert.equal(n.contador, 14); assert.equal(n.reservas[13].numero, 14);
+test('Datos sintéticos: 3 recursos, 6 servicios, 14 reservas sin choques y estados del briefing', () => {
+  const now = new Date();
+  const seed = crearSeed(now);
+  assert.equal(seed.recursos.length, 3); assert.equal(seed.servicios.length, 6); assert.equal(seed.reservas.length, 14);
+  const c = (e) => seed.reservas.filter((r) => r.estado === e).length;
+  assert.deepEqual([c('Fecha retenida'), c('Señada'), c('Saldo pagado'), c('Cancelada'), c('Consulta'), c('Realizada')], [2, 4, 2, 1, 3, 2]);
+  for (const r of seed.reservas.filter((x) => ['Fecha retenida', 'Señada', 'Saldo pagado'].includes(x.estado))) {
+    const v = verificarDisponibilidad(r, seed, { ignorarId: r.id });
+    assert.ok(v.ok, `${r.id} ${r.inicio}: ${v.motivos.join(' | ')}`);
+  }
+  const dias = [...new Set(seed.reservas.filter((r) => r.inicio).map((r) => dayKey(r.inicio)))];
+  const completos = dias.filter((k) => estadoDia(k, seed) === 'Completo');
+  assert.equal(completos.length, 1); assert.equal(weekdayOfKey(completos[0]), 6);
+  assert.ok(seed.reservas.every((r) => !r.inicio || weekdayOfKey(dayKey(r.inicio)) !== 1), 'ninguna reserva en lunes');
+  assert.equal(vencerRetenidas(seed.reservas, now.getTime()).cambios, 0);
+  assert.equal(vencerRetenidas(seed.reservas, now.getTime() + 2.1 * 3600000).cambios, 1);
+  assert.ok(reservasFuturasDeRecurso('r-maquilladora', seed, nowWall(now)).length > 0);
+  const aceptacion = seed.reservas.find((r) => r.km === 30);
+  assert.deepEqual([aceptacion.total, aceptacion.sena], [17300, 8650]);
+  assert.match(textoCompartir(aceptacion, seed.servicios.find((s) => s.id === aceptacion.servicioId)), /Total: \$ 17\.300 UYU · Seña \(50 %\): \$ 8\.650 UYU/);
 });

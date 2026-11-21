@@ -6,14 +6,6 @@
 // navegador. Los instantes reales (fechaRetencion, historial) son ISO UTC.
 
 export const ZONA_NEGOCIO = 'America/Montevideo';
-export const HORA_APERTURA = 8 * 60; // 08:00
-export const HORA_CIERRE = 20 * 60; // 20:00
-export const PASO_MIN = 15;
-export const MIN_POR_ACOMPANANTE = 40;
-export const HORAS_RETENCION = 48;
-export const ESTADOS = ['Retenida', 'Confirmada', 'Saldo pagado', 'Cancelada'];
-export const ESTADOS_ACTIVOS = ['Retenida', 'Confirmada', 'Saldo pagado'];
-
 // ---------- Fechas de pared ----------
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -71,76 +63,122 @@ export function nowWall(instant = new Date(), timeZone = ZONA_NEGOCIO) {
 
 // ---------- Ocupación: cada recurso con su propio intervalo ----------
 
-/** Tramos efectivos de un servicio para una reserva concreta (minutos desde el inicio). */
-export function tramosEfectivos(servicio, recursos, { lugar = 'Estudio', acompanantes = 0 } = {}) {
+// ---------- Configuración de ejemplo ----------
+export const HORA_APERTURA = 7 * 60; // 07:00
+export const HORA_CIERRE = 20 * 60; // 20:00
+export const DIA_SIN_RESERVAS = 1; // lunes
+export const PASO_MIN = 15;
+export const MIN_POR_ACOMPANANTE = 45;
+export const MIN_POSTIZAS = 15;
+export const MAX_NOVIAS_POR_DIA = 2;
+export const HORAS_RETENCION = 48;
+export const ESTADOS = ['Consulta', 'Fecha retenida', 'Señada', 'Saldo pagado', 'Realizada', 'Cancelada'];
+/** Estados que ocupan recursos. Consulta y Cancelada no ocupan. */
+export const ESTADOS_QUE_OCUPAN = ['Fecha retenida', 'Señada', 'Saldo pagado', 'Realizada'];
+export const TARIFAS_DEFECTO = { acompananteUYU: 2800, postizasUYU: 900, kmUYU: 60 };
+
+export const esActiva = (r) => ESTADOS_QUE_OCUPAN.includes(r.estado) && !!r.inicio;
+export const esLunes = (key) => weekdayOfKey(key) === DIA_SIN_RESERVAS;
+const principalDe = (recursos) => recursos.find((r) => r.principal && r.tipo === 'Persona') || recursos.find((r) => r.tipo === 'Persona');
+/** La asistente: primera persona que no es la principal. */
+export const asistenteDe = (recursos) => recursos.find((r) => r.tipo === 'Persona' && !r.principal);
+/** Duración y precio de los extras (acompañante y pestañas), tomados del catálogo. */
+export function extrasDe(servicios, tarifas = TARIFAS_DEFECTO) {
+  const ac = servicios.find((s) => s.extra === 'acompanante');
+  const pe = servicios.find((s) => s.extra === 'pestanas');
+  return {
+    minAcompanante: ac ? ac.duracionMin : MIN_POR_ACOMPANANTE,
+    minPostizas: pe ? pe.duracionMin : MIN_POSTIZAS,
+    tarifas: { ...tarifas, acompananteUYU: ac ? Number(ac.precioUYU) : tarifas.acompananteUYU, postizasUYU: pe ? Number(pe.precioUYU) : tarifas.postizasUYU },
+  };
+}
+export const admiteLugar = (s, lugar) => (lugar === 'Domicilio' ? !!s?.admiteDomicilio : s?.admiteEstudio !== false);
+
+// ---------- Ocupación: cada recurso con su propio intervalo ----------
+
+/**
+ * Tramos efectivos de una reserva (minutos desde la hora de inicio; pueden ser negativos por el traslado).
+ * - A domicilio no se ocupa ningún espacio (estudio).
+ * - Pestañas: +15 min al tramo de la maquilladora en servicios de novia.
+ * - Acompañantes: 45 min c/u a continuación de la novia, con `acompanantesCon` (asistente o maquilladora).
+ *   Si las hace la maquilladora, se suma a su tramo; en el estudio, ocupan también el sillón.
+ * - Traslado: a domicilio, la maquilladora queda bloqueada `trasladoMin` antes de la hora de inicio.
+ */
+export function tramosEfectivos(servicio, recursos, { lugar = 'Estudio', acompanantes = 0, postizas = false, acompanantesCon = null, minAcompanante = MIN_POR_ACOMPANANTE, minPostizas = MIN_POSTIZAS } = {}) {
   const byId = Object.fromEntries(recursos.map((r) => [r.id, r]));
-  let tramos = (servicio.tramos || []).map((t) => ({ ...t, fin: t.offsetMin + t.duracionMin }));
-  // A domicilio no se ocupa ningún espacio (estudio); personas y equipos viajan.
-  if (lugar === 'Domicilio') tramos = tramos.filter((t) => byId[t.recursoId]?.tipo !== 'Espacio');
-  const extra = Math.max(0, acompanantes | 0) * MIN_POR_ACOMPANANTE;
-  if (extra > 0) {
-    const personas = tramos.filter((t) => byId[t.recursoId]?.tipo === 'Persona');
-    const apoyo = personas.filter((t) => !byId[t.recursoId]?.principal);
-    const pool = apoyo.length ? apoyo : personas;
-    if (pool.length) {
-      const elegido = pool.reduce((a, b) => (b.fin > a.fin ? b : a));
-      const finOriginal = elegido.fin;
-      tramos = tramos.map((t) => {
-        if (t === elegido) return { ...t, fin: t.fin + extra };
-        if (t.offsetMin >= finOriginal) return { ...t, offsetMin: t.offsetMin + extra, fin: t.fin + extra };
-        if (t.fin >= finOriginal) return { ...t, fin: t.fin + extra };
-        return t;
-      });
+  let tr = (servicio.tramos || []).map((t) => ({ recursoId: t.recursoId, desde: t.offsetMin, hasta: t.offsetMin + t.duracionMin }));
+  if (lugar === 'Domicilio') tr = tr.filter((t) => byId[t.recursoId]?.tipo !== 'Espacio');
+  const principal = principalDe(recursos)?.id;
+  const extender = (recursoId, extra) => {
+    const t = tr.find((x) => x.recursoId === recursoId);
+    if (!t) return;
+    const fin = t.hasta;
+    tr = tr.map((x) => {
+      if (x === t) return { ...x, hasta: x.hasta + extra };
+      if (x.desde >= fin) return { ...x, desde: x.desde + extra, hasta: x.hasta + extra };
+      if (x.hasta >= fin) return { ...x, hasta: x.hasta + extra };
+      return x;
+    });
+  };
+  const nov = tr.find((t) => t.recursoId === principal) || tr.find((t) => byId[t.recursoId]?.tipo === 'Persona');
+  if (servicio.esNovia && nov) {
+    if (postizas) extender(nov.recursoId, minPostizas);
+    const n = Math.max(0, Math.min(4, acompanantes | 0));
+    if (n > 0) {
+      const extra = n * minAcompanante;
+      const finNovia = tr.find((t) => t.recursoId === nov.recursoId).hasta;
+      const con = acompanantesCon && byId[acompanantesCon] ? acompanantesCon : (asistenteDe(recursos)?.id || nov.recursoId);
+      if (con === nov.recursoId) extender(nov.recursoId, extra);
+      else {
+        tr.push({ recursoId: con, desde: finNovia, hasta: finNovia + extra });
+        tr = tr.map((x) => (byId[x.recursoId]?.tipo === 'Espacio' && x.hasta >= finNovia ? { ...x, hasta: Math.max(x.hasta, finNovia + extra) } : x));
+      }
     }
   }
-  return tramos.map((t) => ({ recursoId: t.recursoId, desde: t.offsetMin, hasta: t.fin }));
+  const traslado = servicio.trasladoMin | 0;
+  if (lugar === 'Domicilio' && traslado > 0 && principal) {
+    tr = tr.map((x) => (x.recursoId === principal && x.desde === Math.min(...tr.filter((y) => y.recursoId === principal).map((y) => y.desde)) ? { ...x, desde: x.desde - traslado } : x));
+  }
+  return tr;
 }
 
+/** Minutos desde la hora de inicio hasta que termina todo (sin contar el traslado previo). */
 export function duracionTotal(servicio, recursos, opts) {
   const tr = tramosEfectivos(servicio, recursos, opts);
   return tr.length ? Math.max(...tr.map((t) => t.hasta)) : servicio.duracionMin;
 }
 
-/** Intervalos absolutos (hora de pared) que ocupa una reserva, uno por recurso. */
 export function ocupacionDeReserva(reserva, servicios, recursos) {
   const s = servicios.find((x) => x.id === reserva.servicioId);
-  if (!s) return [];
+  if (!s || !reserva.inicio) return [];
   const base = parseWall(reserva.inicio);
-  return tramosEfectivos(s, recursos, reserva).map((t) => ({
-    recursoId: t.recursoId,
-    reservaId: reserva.id,
-    inicio: base + t.desde * 60000,
-    fin: base + t.hasta * 60000,
+  const ex = extrasDe(servicios);
+  return tramosEfectivos(s, recursos, { ...reserva, minAcompanante: ex.minAcompanante, minPostizas: ex.minPostizas }).map((t) => ({
+    recursoId: t.recursoId, reservaId: reserva.id, inicio: base + t.desde * 60000, fin: base + t.hasta * 60000,
   }));
 }
 
-export const esActiva = (r) => ESTADOS_ACTIVOS.includes(r.estado);
-
-/** Intervalos ocupados de un recurso en un día (ms de pared), ordenados. */
 export function ocupacionRecursoDia(recursoId, key, reservas, servicios, recursos) {
   const d0 = parseWall(key);
   const d1 = d0 + 86400000;
   const out = [];
   for (const r of reservas) {
     if (!esActiva(r)) continue;
-    for (const o of ocupacionDeReserva(r, servicios, recursos)) {
-      if (o.recursoId === recursoId && o.inicio < d1 && o.fin > d0) out.push(o);
-    }
+    for (const o of ocupacionDeReserva(r, servicios, recursos)) if (o.recursoId === recursoId && o.inicio < d1 && o.fin > d0) out.push(o);
   }
   return out.sort((a, b) => a.inicio - b.inicio);
 }
 
 const solapa = (a0, a1, b0, b1) => a0 < b1 && b0 < a1;
+const minDia = (ms) => Math.round((((ms % 86400000) + 86400000) % 86400000) / 60000);
 
-/**
- * Verifica si una reserva candidata entra. Devuelve { ok, motivos[] }.
- * Cada recurso se mira solo contra su propio intervalo: una tarea que usa solo
- * a la maquilladora no se bloquea porque la asistente esté ocupada.
- */
-export function verificarDisponibilidad(cand, { reservas, servicios, recursos }, { ignorarId } = {}) {
+export function noviasDelDia(key, ctx, ignorarId) {
+  return ctx.reservas.filter((r) => esActiva(r) && r.id !== ignorarId && dayKey(r.inicio) === key && ctx.servicios.find((s) => s.id === r.servicioId)?.esNovia);
+}
+
+/** Chequeo de recursos con la asignación de acompañantes ya decidida. */
+function chequearRecursos(cand, { reservas, servicios, recursos }, ignorarId) {
   const motivos = [];
-  const s = servicios.find((x) => x.id === cand.servicioId);
-  if (!s) return { ok: false, motivos: ['Elegí un servicio del catálogo.'] };
   const ocup = ocupacionDeReserva({ ...cand, id: cand.id || '_cand' }, servicios, recursos);
   if (!ocup.length) return { ok: false, motivos: ['El servicio no tiene recursos asignados.'] };
   const key = dayKey(cand.inicio);
@@ -148,7 +186,7 @@ export function verificarDisponibilidad(cand, { reservas, servicios, recursos },
   const ini = Math.min(...ocup.map((o) => o.inicio));
   const fin = Math.max(...ocup.map((o) => o.fin));
   if (ini < dia0 + HORA_APERTURA * 60000 || fin > dia0 + HORA_CIERRE * 60000) {
-    motivos.push(`Fuera del horario de atención (${hhmm(HORA_APERTURA)}–${hhmm(HORA_CIERRE)}): el servicio iría de ${hhmm((ini - dia0) / 60000)} a ${hhmm((fin - dia0) / 60000)}.`);
+    motivos.push(`Fuera del horario (${hhmm(HORA_APERTURA)}–${hhmm(HORA_CIERRE)}): con traslado y extras iría de ${hhmm(minDia(ini))} a ${hhmm(minDia(fin))}.`);
   }
   const byId = Object.fromEntries(recursos.map((r) => [r.id, r]));
   const vistos = new Set();
@@ -165,88 +203,112 @@ export function verificarDisponibilidad(cand, { reservas, servicios, recursos },
       for (const x of ocupacionDeReserva(r, servicios, recursos)) {
         if (x.recursoId === o.recursoId && solapa(o.inicio, o.fin, x.inicio, x.fin)) {
           const sx = servicios.find((q) => q.id === r.servicioId);
-          motivos.push(`${rec.nombre} no está libre de ${hhmm(minDia(x.inicio))} a ${hhmm(minDia(x.fin))} (${r.novia?.nombre || 'otra reserva'} · ${sx?.nombre || 'servicio'}); este servicio necesita ese recurso de ${hhmm(minDia(o.inicio))} a ${hhmm(minDia(o.fin))}.`);
+          motivos.push(`${rec.nombre} no está libre de ${hhmm(minDia(x.inicio))} a ${hhmm(minDia(x.fin))} (${r.novia?.nombre || 'otra reserva'} · ${sx?.nombre || 'servicio'}); esta reserva la necesita de ${hhmm(minDia(o.inicio))} a ${hhmm(minDia(o.fin))}.`);
         }
       }
     }
   }
   return { ok: motivos.length === 0, motivos };
 }
-const minDia = (ms) => Math.round((ms % 86400000) / 60000);
 
-/** Horarios de inicio (cada 15 min) en que el servicio entra ese día. */
+/**
+ * ¿Entra la reserva? Devuelve { ok, motivos[], acompanantesCon }.
+ * Cada recurso se compara solo contra su propio intervalo. Las acompañantes van con la
+ * asistente si está libre; si no, con la maquilladora sumando tiempo.
+ */
+export function verificarDisponibilidad(cand, ctx, { ignorarId } = {}) {
+  const { servicios, recursos } = ctx;
+  const s = servicios.find((x) => x.id === cand.servicioId);
+  if (!s) return { ok: false, motivos: ['Elegí un servicio del catálogo.'] };
+  if (!cand.inicio) return { ok: false, motivos: ['Elegí fecha y hora para retener la fecha.'] };
+  const key = dayKey(cand.inicio);
+  const base = [];
+  if (esLunes(key)) base.push('Los lunes no se toman reservas.');
+  if (!admiteLugar(s, cand.lugar)) base.push(`«${s.nombre}» no se hace ${cand.lugar === 'Domicilio' ? 'a domicilio' : 'en el estudio'}.`);
+  if (s.esNovia) {
+    const n = noviasDelDia(key, ctx, ignorarId ?? cand.id).length;
+    if (n >= MAX_NOVIAS_POR_DIA) base.push(`Ya hay ${n} novias el ${fechaLarga(key)}: no se toman más de ${MAX_NOVIAS_POR_DIA} por día.`);
+  }
+  if (base.length) return { ok: false, motivos: base };
+  const ign = ignorarId ?? null;
+  const conAcomp = s.esNovia && (cand.acompanantes | 0) > 0;
+  if (conAcomp && !cand.acompanantesCon) {
+    const asis = asistenteDe(recursos);
+    const prin = principalDe(recursos);
+    let r1 = null;
+    if (asis) {
+      r1 = chequearRecursos({ ...cand, acompanantesCon: asis.id }, ctx, ign);
+      if (r1.ok) return { ...r1, acompanantesCon: asis.id };
+    }
+    const r2 = chequearRecursos({ ...cand, acompanantesCon: prin?.id }, ctx, ign);
+    if (r2.ok) return { ...r2, acompanantesCon: prin?.id };
+    const motivos = [...new Set([...(r1 ? r1.motivos : []), ...r2.motivos])];
+    return { ok: false, motivos: r1 ? ['Las acompañantes no entran ni con la asistente ni con la maquilladora:', ...motivos] : motivos };
+  }
+  const r = chequearRecursos(cand, ctx, ign);
+  return { ...r, acompanantesCon: conAcomp ? cand.acompanantesCon : null };
+}
+
 export function horariosDisponibles(cand, ctx, opts) {
   const key = dayKey(cand.inicio) || cand.fecha;
   const out = [];
   for (let m = HORA_APERTURA; m < HORA_CIERRE; m += PASO_MIN) {
-    const inicio = `${key}T${hhmm(m)}`;
-    if (verificarDisponibilidad({ ...cand, inicio }, ctx, opts).ok) out.push(hhmm(m));
+    if (verificarDisponibilidad({ ...cand, acompanantesCon: null, inicio: `${key}T${hhmm(m)}` }, ctx, opts).ok) out.push(hhmm(m));
   }
   return out;
 }
 
-// ---------- Estado del día ----------
+// ---------- Cupo diario y estado del día ----------
 
-/** Huecos libres de un recurso en la jornada (minutos del día). */
 export function huecos(recursoId, key, ctx) {
   const rec = ctx.recursos.find((r) => r.id === recursoId);
-  if (!rec || (rec.diasBloqueados || []).includes(key)) return [];
+  if (!rec || esLunes(key) || (rec.diasBloqueados || []).includes(key)) return [];
   const d0 = parseWall(key);
   const occ = ocupacionRecursoDia(recursoId, key, ctx.reservas, ctx.servicios, ctx.recursos)
     .map((o) => [Math.max(HORA_APERTURA, (o.inicio - d0) / 60000), Math.min(HORA_CIERRE, (o.fin - d0) / 60000)]);
   const out = [];
   let cur = HORA_APERTURA;
-  for (const [a, b] of occ) {
-    if (a > cur) out.push([cur, a]);
-    cur = Math.max(cur, b);
-  }
+  for (const [a, b] of occ) { if (a > cur) out.push([cur, a]); cur = Math.max(cur, b); }
   if (cur < HORA_CIERRE) out.push([cur, HORA_CIERRE]);
   return out;
 }
 
-/** Duración del servicio más corto que usa al recurso (lo que define "Completo"). */
-export function servicioMasCorto(recursoId, servicios) {
-  let min = Infinity;
-  for (const s of servicios) {
-    for (const t of s.tramos || []) if (t.recursoId === recursoId) min = Math.min(min, t.duracionMin);
+/** Largo de hueco que mantiene un día abierto: para la maquilladora, el servicio de novia más corto (90 min). */
+export function huecoMinimo(recursoId, ctx) {
+  const rec = ctx.recursos.find((r) => r.id === recursoId);
+  const durs = [];
+  for (const s of ctx.servicios) {
+    if (s.extra || (rec?.principal && !s.esNovia)) continue;
+    for (const t of s.tramos || []) if (t.recursoId === recursoId) durs.push(t.duracionMin);
   }
-  return Number.isFinite(min) ? min : PASO_MIN;
+  return durs.length ? Math.min(...durs) : MIN_POR_ACOMPANANTE;
 }
 
 /**
- * Libre / Parcial / Completo.
- * - Sin filtro: lo decide la maquilladora (recurso principal). Completo cuando no le
- *   queda ningún hueco del largo del servicio más corto. Libre cuando ningún recurso
- *   tiene nada ese día.
- * - Con filtro de recurso: la misma regla aplicada a ese recurso.
+ * Cerrado (lunes) / Libre (la maquilladora no tiene nada) / Parcial (le queda algún hueco de 90 min) / Completo.
+ * Con filtro de recurso se aplica la misma regla a ese recurso.
  */
 export function estadoDia(key, ctx, recursoFiltroId = null) {
-  const objetivo = recursoFiltroId || ctx.recursos.find((r) => r.principal)?.id || ctx.recursos[0]?.id;
+  if (esLunes(key)) return 'Cerrado';
+  const objetivo = recursoFiltroId || principalDe(ctx.recursos)?.id;
   if (!objetivo) return 'Libre';
-  const minimo = servicioMasCorto(objetivo, ctx.servicios);
-  const hs = huecos(objetivo, key, ctx);
-  if (!hs.some(([a, b]) => b - a >= minimo)) return 'Completo';
-  const alcance = recursoFiltroId ? [recursoFiltroId] : ctx.recursos.map((r) => r.id);
-  const algoOcupado = alcance.some((id) => {
-    const r = ctx.recursos.find((x) => x.id === id);
-    return (r?.diasBloqueados || []).includes(key) ||
-      ocupacionRecursoDia(id, key, ctx.reservas, ctx.servicios, ctx.recursos).length > 0;
-  });
-  return algoOcupado ? 'Parcial' : 'Libre';
+  const rec = ctx.recursos.find((r) => r.id === objetivo);
+  if ((rec?.diasBloqueados || []).includes(key)) return 'Completo';
+  if (!ocupacionRecursoDia(objetivo, key, ctx.reservas, ctx.servicios, ctx.recursos).length) return 'Libre';
+  const minimo = huecoMinimo(objetivo, ctx);
+  return huecos(objetivo, key, ctx).some(([a, b]) => b - a >= minimo) ? 'Parcial' : 'Completo';
 }
 
 // ---------- Precios ----------
-export const TARIFAS_DEFECTO = { acompananteUYU: 2500, postizasUYU: 900, kmUYU: 60 };
-
 export function calcularPrecio({ servicio, lugar, km, acompanantes, postizas }, tarifas = TARIFAS_DEFECTO) {
   const base = servicio ? Number(servicio.precioUYU) || 0 : 0;
-  const nAcomp = Math.max(0, Math.min(4, acompanantes | 0));
+  const extras = !!servicio?.esNovia;
+  const nAcomp = extras ? Math.max(0, Math.min(4, acompanantes | 0)) : 0;
   const acomp = nAcomp * tarifas.acompananteUYU;
-  const post = postizas ? tarifas.postizasUYU : 0;
-  const kms = lugar === 'Domicilio' ? Math.max(0, km | 0) : 0;
-  const traslado = kms * tarifas.kmUYU;
-  const total = base + acomp + post + traslado;
-  const sena = total / 2; // exactamente 50 %
+  const post = extras && postizas ? tarifas.postizasUYU : 0;
+  const traslado = lugar === 'Domicilio' ? Math.max(0, km | 0) * tarifas.kmUYU : 0;
+  const total = base + traslado + acomp + post;
+  const sena = total / 2;
   return { base, acomp, post, traslado, total, sena, saldo: total - sena };
 }
 
@@ -255,71 +317,89 @@ export function formatUYU(n) {
   return '$ ' + n.toLocaleString('es-UY', { minimumFractionDigits: entero ? 0 : 2, maximumFractionDigits: 2 }) + ' UYU';
 }
 
-// ---------- Validación del formulario ----------
+// ---------- Validación ----------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** f.tipo: 'retener' (por defecto) o 'consulta' (fecha opcional, no ocupa recursos). */
 export function validarReserva(f, ctx, ahoraWall) {
   const e = {};
+  const consulta = f.tipo === 'consulta';
   if (!f.nombre?.trim()) e.nombre = 'Ingresá el nombre de la novia.';
   if (!f.email?.trim()) e.email = 'Ingresá un email.';
   else if (!EMAIL_RE.test(f.email.trim())) e.email = 'El email no tiene un formato válido (ej.: nombre@correo.com).';
   const s = ctx.servicios.find((x) => x.id === f.servicioId);
   if (!f.servicioId || !s) e.servicioId = 'Elegí un servicio del catálogo.';
-  if (!f.fecha) e.fecha = 'Elegí una fecha.';
-  if (!f.hora) e.hora = 'Elegí una hora de inicio.';
+  if (!consulta || f.fecha || f.hora) {
+    if (!f.fecha) e.fecha = consulta ? 'Completá la fecha o dejá fecha y hora vacías.' : 'Elegí una fecha.';
+    if (!f.hora) e.hora = consulta ? 'Completá la hora o dejá fecha y hora vacías.' : 'Elegí una hora de inicio.';
+  }
   if (f.fecha && f.hora) {
     const ini = `${f.fecha}T${f.hora}`;
     const m = minutesOfDay(ini);
     if (ini < ahoraWall) e.hora = 'La fecha y hora de inicio no puede estar en el pasado.';
     else if (m < HORA_APERTURA || m >= HORA_CIERRE) e.hora = `La hora de inicio debe estar entre ${hhmm(HORA_APERTURA)} y ${hhmm(HORA_CIERRE)}.`;
+    else if (esLunes(f.fecha)) e.fecha = 'Los lunes no se toman reservas (horario de martes a domingo).';
   }
   if (f.lugar !== 'Estudio' && f.lugar !== 'Domicilio') e.lugar = 'Elegí Estudio o Domicilio.';
+  else if (s && !admiteLugar(s, f.lugar)) e.lugar = `«${s.nombre}» no se hace ${f.lugar === 'Domicilio' ? 'a domicilio' : 'en el estudio'}.`;
   if (f.lugar === 'Domicilio') {
-    if (s && !s.admiteDomicilio) e.lugar = `«${s.nombre}» no se ofrece a domicilio.`;
     if (!f.direccion?.trim()) e.direccion = 'La dirección es obligatoria a domicilio.';
     const km = Number(f.km);
     if (f.km === '' || f.km == null || !Number.isInteger(km) || km < 1 || km > 60) e.km = 'Indicá los kilómetros: un número entero de 1 a 60.';
   }
   const a = Number(f.acompanantes);
   if (!Number.isInteger(a) || a < 0 || a > 4) e.acompanantes = 'Acompañantes: de 0 a 4.';
+  else if (a > 0 && s && !s.esNovia) e.acompanantes = 'Las acompañantes se agregan solo a un servicio de novia.';
+  if (f.postizas && s && !s.esNovia) e.postizas = 'Las pestañas se agregan solo a un servicio de novia.';
   return e;
 }
 
 // ---------- Estados y transiciones ----------
-
-/** Último instante (hora de pared) para marcar Saldo pagado sin la marca: fin del día anterior al evento. */
 export function limiteSaldo(reserva) {
   return `${dayKey(reserva.inicio)}T00:00`;
 }
 
 export function accionesPermitidas(reserva, ahoraWall) {
-  const fueraDePlazo = ahoraWall >= limiteSaldo(reserva);
+  const yaPaso = !!reserva.inicio && ahoraWall >= reserva.inicio;
+  const fueraDePlazo = !!reserva.inicio && ahoraWall >= limiteSaldo(reserva);
+  const cancelar = { id: 'cancelar', label: 'Cancelar', a: 'Cancelada' };
+  const realizada = { id: 'realizada', label: 'Marcar como realizada', a: 'Realizada' };
   switch (reserva.estado) {
-    case 'Retenida':
-      return [{ id: 'sena', label: 'Registrar seña (50 %)', a: 'Confirmada' }, { id: 'cancelar', label: 'Cancelar', a: 'Cancelada' }];
-    case 'Confirmada':
-      return [
-        { id: 'saldo', label: 'Registrar saldo pagado', a: 'Saldo pagado', requiereFueraDePlazo: fueraDePlazo },
-        { id: 'cancelar', label: 'Cancelar', a: 'Cancelada' },
-      ];
-    default:
-      return [];
+    case 'Consulta': return [{ id: 'retener', label: 'Retener fecha (48 h)', a: 'Fecha retenida' }, cancelar];
+    case 'Fecha retenida': return [{ id: 'sena', label: 'Registrar seña (50 %)', a: 'Señada' }, cancelar];
+    case 'Señada': return [{ id: 'saldo', label: 'Registrar saldo pagado', a: 'Saldo pagado', requiereFueraDePlazo: fueraDePlazo }, ...(yaPaso ? [realizada] : []), cancelar];
+    case 'Saldo pagado': return [...(yaPaso ? [realizada] : []), cancelar];
+    default: return [];
   }
 }
 
-/** Aplica una transición; lanza Error con el motivo si no corresponde. */
-export function aplicarTransicion(reserva, accionId, ahoraWall, ahoraISO, { pagoFueraPlazo = false } = {}) {
+/**
+ * Aplica una transición o lanza Error con el motivo. `retener` necesita ctx para verificar recursos.
+ * Cancelar una reserva señada deja anotada la seña retenida (no se devuelve).
+ */
+export function aplicarTransicion(reserva, accionId, ahoraWall, ahoraISO, { pagoFueraPlazo = false, ctx = null } = {}) {
   const acc = accionesPermitidas(reserva, ahoraWall).find((x) => x.id === accionId);
-  if (!acc) throw new Error(`No se puede pasar de «${reserva.estado}» con esa acción.`);
+  if (!acc) throw new Error(`No se puede hacer eso con una reserva en «${reserva.estado}».`);
   if (acc.requiereFueraDePlazo && !pagoFueraPlazo) {
-    throw new Error('El plazo para el saldo venció el día anterior al evento. Para registrarlo, marcá «Pago fuera de plazo».');
+    throw new Error('El saldo se espera hasta el día anterior al evento. Para registrarlo ahora, marcá «Pago fuera de plazo».');
   }
-  const extra = acc.id === 'saldo' ? { pagoFueraPlazo: !!acc.requiereFueraDePlazo } : {};
+  const extra = {};
+  let motivo = acc.label;
+  if (acc.id === 'saldo') { extra.pagoFueraPlazo = !!acc.requiereFueraDePlazo; if (extra.pagoFueraPlazo) motivo += ' · fuera de plazo'; }
+  if (acc.id === 'retener') {
+    if (!ctx) throw new Error('Falta el contexto para verificar recursos.');
+    const v = verificarDisponibilidad({ ...reserva, acompanantesCon: null }, ctx, { ignorarId: reserva.id });
+    if (!v.ok) throw new Error(v.motivos.join(' '));
+    extra.fechaRetencion = ahoraISO;
+    extra.acompanantesCon = v.acompanantesCon;
+  }
+  if (acc.id === 'cancelar' && (reserva.estado === 'Señada' || reserva.estado === 'Saldo pagado')) {
+    extra.senaRetenida = reserva.sena;
+    motivo += ` · seña de ${formatUYU(reserva.sena)} no devuelta`;
+  }
   return {
-    ...reserva,
-    ...extra,
-    estado: acc.a,
-    historial: [...(reserva.historial || []), { en: ahoraISO, de: reserva.estado, a: acc.a, motivo: acc.label + (extra.pagoFueraPlazo ? ' · fuera de plazo' : '') }],
+    ...reserva, ...extra, estado: acc.a,
+    historial: [...(reserva.historial || []), { en: ahoraISO, de: reserva.estado, a: acc.a, motivo }],
   };
 }
 
@@ -327,17 +407,15 @@ export function venceEn(reserva, ahoraMs) {
   return Date.parse(reserva.fechaRetencion) + HORAS_RETENCION * 3600000 - ahoraMs;
 }
 
-/** Cancela automáticamente las retenidas sin seña con 48 h cumplidas. */
+/** Fecha retenida sin seña con 48 h cumplidas → Cancelada (se ejecuta al abrir la app y cada 30 s). */
 export function vencerRetenidas(reservas, ahoraMs) {
   let cambios = 0;
   const next = reservas.map((r) => {
-    if (r.estado === 'Retenida' && r.fechaRetencion && venceEn(r, ahoraMs) <= 0) {
+    if (r.estado === 'Fecha retenida' && r.fechaRetencion && venceEn(r, ahoraMs) <= 0) {
       cambios++;
       return {
-        ...r,
-        estado: 'Cancelada',
-        canceladaPorVencimiento: true,
-        historial: [...(r.historial || []), { en: new Date(Date.parse(r.fechaRetencion) + HORAS_RETENCION * 3600000).toISOString(), de: 'Retenida', a: 'Cancelada', motivo: 'Vencida: 48 h sin seña. Recursos liberados.' }],
+        ...r, estado: 'Cancelada', canceladaPorVencimiento: true,
+        historial: [...(r.historial || []), { en: new Date(Date.parse(r.fechaRetencion) + HORAS_RETENCION * 3600000).toISOString(), de: 'Fecha retenida', a: 'Cancelada', motivo: 'Vencida: 48 h sin seña. Recursos liberados.' }],
       };
     }
     return r;
@@ -346,12 +424,8 @@ export function vencerRetenidas(reservas, ahoraMs) {
 }
 
 // ---------- Prueba ----------
-
-/**
- * Propone la prueba: misma hora un mes antes; si no entra, avanza día a día hasta
- * encontrar uno libre (antes del evento). Devuelve { inicio, movida, motivoOriginal } o { error }.
- */
 export function proponerPrueba(reserva, servicioPruebaId, ctx, ahoraWall) {
+  if (!reserva.inicio) return { error: 'La reserva no tiene fecha.' };
   const hora = timeOf(reserva.inicio);
   const propuesta = oneMonthBefore(reserva.inicio);
   const eventoKey = dayKey(reserva.inicio);
@@ -360,20 +434,16 @@ export function proponerPrueba(reserva, servicioPruebaId, ctx, ahoraWall) {
   for (let i = 0; i < 62 && key < eventoKey; i++, key = addDaysKey(key, 1)) {
     const inicio = `${key}T${hora}`;
     if (inicio < ahoraWall) { if (i === 0) motivoOriginal = 'La fecha de un mes antes ya pasó.'; continue; }
-    const cand = { servicioId: servicioPruebaId, inicio, lugar: 'Estudio', acompanantes: 0, novia: reserva.novia };
-    const v = verificarDisponibilidad(cand, ctx);
+    const v = verificarDisponibilidad({ servicioId: servicioPruebaId, inicio, lugar: 'Estudio', acompanantes: 0, novia: reserva.novia }, ctx);
     if (v.ok) return { inicio, propuestaOriginal: `${dayKey(propuesta)}T${hora}`, movida: i > 0, motivoOriginal };
     if (i === 0) motivoOriginal = v.motivos[0];
   }
   return { error: 'No hay ningún día libre a esa hora entre un mes antes y el evento.' };
 }
 
-// ---------- Recursos ----------
 export function reservasFuturasDeRecurso(recursoId, ctx, ahoraWall) {
-  return ctx.reservas.filter((r) => {
-    if (!esActiva(r) || r.inicio < ahoraWall.slice(0, 10)) return false;
-    return ocupacionDeReserva(r, ctx.servicios, ctx.recursos).some((o) => o.recursoId === recursoId);
-  });
+  return ctx.reservas.filter((r) => esActiva(r) && r.inicio >= ahoraWall.slice(0, 10)
+    && ocupacionDeReserva(r, ctx.servicios, ctx.recursos).some((o) => o.recursoId === recursoId));
 }
 
 // ---------- .ics ----------
@@ -381,8 +451,7 @@ const icsEsc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n
 const icsDate = (wall) => wall.replace(/[-:]/g, '') + '00';
 function fold(line) {
   // RFC 5545: líneas de hasta 75 octetos; continuación con un espacio.
-  const bytes = new TextEncoder().encode(line);
-  if (bytes.length <= 75) return line;
+  if (new TextEncoder().encode(line).length <= 75) return line;
   const out = [];
   let cur = '';
   let len = 0;
@@ -395,9 +464,11 @@ function fold(line) {
   return out.join('\r\n ');
 }
 
-export function generarICS(reserva, servicio, recursos, ahoraISO = new Date().toISOString()) {
-  const dur = duracionTotal(servicio, recursos, reserva);
-  const fin = addMinutesWall(reserva.inicio, dur);
+export function generarICS(reserva, servicios, recursos, ahoraISO = new Date().toISOString()) {
+  if (!reserva.inicio) throw new Error('La consulta no tiene fecha.');
+  const servicio = servicios.find((x) => x.id === reserva.servicioId);
+  const ex = extrasDe(servicios);
+  const fin = addMinutesWall(reserva.inicio, duracionTotal(servicio, recursos, { ...reserva, minAcompanante: ex.minAcompanante, minPostizas: ex.minPostizas }));
   const lugar = reserva.lugar === 'Domicilio' ? `Domicilio: ${reserva.direccion} (${reserva.km} km)` : 'Estudio';
   const stamp = ahoraISO.replace(/[-:]/g, '').replace(/\.\d+/, '');
   const desc = [
@@ -405,9 +476,11 @@ export function generarICS(reserva, servicio, recursos, ahoraISO = new Date().to
     `Novia: ${reserva.novia.nombre} <${reserva.novia.email}>`,
     `Acompañantes: ${reserva.acompanantes}`,
     `Pestañas postizas: ${reserva.postizas ? 'sí' : 'no'}`,
+    ...(reserva.lugar === 'Domicilio' && servicio.trasladoMin ? [`Traslado bloqueado: ${servicio.trasladoMin} min antes`] : []),
     `Estado: ${reserva.estado}`,
     `Total: ${formatUYU(reserva.total)} · Seña: ${formatUYU(reserva.sena)} · Saldo: ${formatUYU(reserva.saldo)}`,
   ].join('\n');
+  const status = reserva.estado === 'Cancelada' ? 'CANCELLED' : ['Consulta', 'Fecha retenida'].includes(reserva.estado) ? 'TENTATIVE' : 'CONFIRMED';
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Agenda Maquilladora//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VTIMEZONE', `TZID:${ZONA_NEGOCIO}`, 'BEGIN:STANDARD', 'DTSTART:19700101T000000',
@@ -420,7 +493,7 @@ export function generarICS(reserva, servicio, recursos, ahoraISO = new Date().to
     `SUMMARY:${icsEsc(`${servicio.nombre} · ${reserva.novia.nombre}`)}`,
     `LOCATION:${icsEsc(lugar)}`,
     `DESCRIPTION:${icsEsc(desc)}`,
-    `STATUS:${reserva.estado === 'Cancelada' ? 'CANCELLED' : reserva.estado === 'Retenida' ? 'TENTATIVE' : 'CONFIRMED'}`,
+    `STATUS:${status}`,
     'END:VEVENT', 'END:VCALENDAR',
   ];
   return lines.map(fold).join('\r\n') + '\r\n';
@@ -443,63 +516,64 @@ export const uid = (p = 'id') => `${p}-${Math.random().toString(36).slice(2, 8)}
 // ---------- Prueba guiada (copia aislada) ----------
 
 /**
- * Ejecuta el caso del briefing sobre una copia aislada del catálogo: no lee ni
- * escribe las reservas guardadas. Devuelve los pasos con lo esperado y lo observado.
+ * Caso de aceptación del briefing sobre una copia aislada del catálogo (no lee ni escribe reservas guardadas):
+ * novia a domicilio a 30 km a las 9:00 con 2 acompañantes y pestañas.
  */
-export function ejecutarPruebaGuiada(recursosBase, serviciosBase, fecha) {
+export function ejecutarPruebaGuiada(recursosBase, serviciosBase, tarifasBase, fecha) {
   const recursos = structuredClone(recursosBase);
   const servicios = structuredClone(serviciosBase);
+  const tarifas = { ...tarifasBase };
   const reservas = [];
   const ctx = { reservas, servicios, recursos };
-  const nombreDe = (id) => recursos.find((r) => r.id === id)?.nombre || id;
+  const prin = recursos.find((r) => r.principal) || recursos[0];
+  const asis = asistenteDe(recursos);
+  const sDom = servicios.find((s) => s.esNovia && s.admiteDomicilio && s.admiteEstudio === false) || servicios.find((s) => s.esNovia);
+  const sSolo = servicios.find((s) => !s.extra && !s.esNovia && !s.esPrueba && (s.tramos || []).length === 1 && s.tramos[0].recursoId === prin.id);
   const franja = (reserva, recursoId) => {
-    const o = ocupacionDeReserva(reserva, servicios, recursos).find((x) => x.recursoId === recursoId);
-    return o ? `${hhmm(Math.round((o.inicio % 86400000) / 60000))}–${hhmm(Math.round((o.fin % 86400000) / 60000))}` : '—';
+    const o = ocupacionDeReserva(reserva, servicios, recursos).filter((x) => x.recursoId === recursoId);
+    if (!o.length) return '—';
+    return `${hhmm(minDia(Math.min(...o.map((x) => x.inicio))))}–${hhmm(minDia(Math.max(...o.map((x) => x.fin))))}`;
   };
-  const mk = (id, servicioId, hora, extra = {}) => ({ id, servicioId, inicio: `${fecha}T${hora}`, lugar: 'Estudio', km: 0, acompanantes: 0, postizas: false, estado: 'Confirmada', novia: { nombre: id, email: `${id}@demo.test` }, ...extra });
-
-  const boda = mk('guiada-boda', 's-boda', '08:00');
+  const novia = { id: 'guiada-novia', servicioId: sDom.id, inicio: `${fecha}T09:00`, lugar: 'Domicilio', direccion: 'Demo', km: 30, acompanantes: 2, postizas: true, estado: 'Señada', novia: { nombre: 'Novia de la prueba', email: 'demo@demo.test' } };
   const pasos = [];
-  const v0 = verificarDisponibilidad(boda, ctx);
-  if (v0.ok) reservas.push(boda);
-  pasos.push({ paso: 'Novia · Día de boda a las 08:00 en el estudio', esperado: 'Se acepta', observado: v0.ok ? 'Se acepta' : 'Se rechaza: ' + v0.motivos[0], ok: v0.ok });
-  pasos.push({ paso: `Ocupación de ${nombreDe('r-maquilladora')}`, esperado: '08:00–10:45', observado: franja(boda, 'r-maquilladora') });
-  pasos.push({ paso: `Ocupación de ${nombreDe('r-asistente')}`, esperado: '10:45–12:15', observado: franja(boda, 'r-asistente') });
-  const tarea = mk('guiada-retoque', 's-retoque', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'Demo' });
-  const v1 = verificarDisponibilidad(tarea, ctx);
-  pasos.push({ paso: 'Tarea a las 11:00 que solo necesita a la maquilladora (Retoque y fotos)', esperado: 'Se acepta (la asistente ocupada no la bloquea)', observado: v1.ok ? 'Se acepta (la asistente ocupada no la bloquea)' : 'Se rechaza: ' + v1.motivos.join(' ') });
-  const contraste = mk('guiada-peinado', 's-peinado', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'Demo' });
-  const v2 = verificarDisponibilidad(contraste, ctx);
-  pasos.push({ paso: 'Contraste: Peinado de novia a las 11:00 (necesita a la asistente)', esperado: 'Se rechaza por la asistente', observado: v2.ok ? 'Se acepta' : 'Se rechaza: ' + v2.motivos[0] });
-  for (const p of pasos) if (p.ok === undefined) p.ok = p.observado === p.esperado || (p.esperado.startsWith('Se rechaza') && p.observado.startsWith('Se rechaza'));
-  return { fecha, pasos, ok: pasos.every((p) => p.ok) };
+  const v0 = verificarDisponibilidad(novia, ctx);
+  if (v0.ok) { novia.acompanantesCon = v0.acompanantesCon; reservas.push(novia); }
+  pasos.push({ paso: `${sDom.nombre}: 30 km, 9:00, 2 acompañantes y pestañas`, esperado: 'Se acepta', observado: v0.ok ? 'Se acepta' : 'Se rechaza: ' + v0.motivos[0] });
+  const p = calcularPrecio({ servicio: sDom, lugar: 'Domicilio', km: 30, acompanantes: 2, postizas: true }, extrasDe(servicios, tarifas).tarifas);
+  pasos.push({ paso: 'Total (servicio + traslado + acompañantes + pestañas)', esperado: formatUYU(17300), observado: `${formatUYU(p.base)} + ${formatUYU(p.traslado)} + ${formatUYU(p.acomp)} + ${formatUYU(p.post)} = ${formatUYU(p.total)}`, ok: p.total === 17300 });
+  pasos.push({ paso: 'Seña (50 %)', esperado: formatUYU(8650), observado: formatUYU(p.sena) });
+  pasos.push({ paso: `Ocupación de ${prin.nombre} (traslado + novia + pestañas)`, esperado: '08:00–10:45', observado: franja(novia, prin.id) });
+  pasos.push({ paso: `Ocupación de ${asis?.nombre || 'la asistente'} (2 acompañantes)`, esperado: '10:45–12:15', observado: asis ? franja(novia, asis.id) : '—' });
+  if (sSolo) {
+    const t11 = { id: 'guiada-t11', servicioId: sSolo.id, inicio: `${fecha}T11:00`, lugar: 'Estudio', km: 0, acompanantes: 0, postizas: false, estado: 'Señada', novia: { nombre: 'Tarea 11:00', email: 'demo@demo.test' } };
+    const v1 = verificarDisponibilidad(t11, ctx);
+    pasos.push({ paso: `Tarea a las 11:00 que solo necesita a la maquilladora (${sSolo.nombre})`, esperado: 'Se acepta (la asistente ocupada no la bloquea)', observado: v1.ok ? 'Se acepta (la asistente ocupada no la bloquea)' : 'Se rechaza: ' + v1.motivos.join(' ') });
+    const t1030 = { ...t11, id: 'guiada-t1030', inicio: `${fecha}T10:30` };
+    const v2 = verificarDisponibilidad(t1030, ctx);
+    pasos.push({ paso: `Contraste: ${sSolo.nombre} a las 10:30`, esperado: 'Se rechaza por la maquilladora', observado: v2.ok ? 'Se acepta' : 'Se rechaza: ' + v2.motivos[0] });
+  }
+  for (const x of pasos) if (x.ok === undefined) x.ok = x.observado === x.esperado || (x.esperado.startsWith('Se rechaza') && x.observado.startsWith('Se rechaza'));
+  return { fecha, pasos, ok: pasos.every((x) => x.ok) };
 }
 
 // ---------- Compartir (solo texto; lo envía la persona a mano) ----------
-export function textoCompartir(reserva, servicio, ahoraMs) {
+export function textoCompartir(reserva, servicio) {
   const lugar = reserva.lugar === 'Domicilio' ? `${reserva.direccion} (${reserva.km} km)` : 'Estudio';
   const lineas = [
     `Reserva N.º ${numeroReserva(reserva)} · ${servicio?.nombre || 'Servicio'}`,
     `Novia: ${reserva.novia.nombre}`,
-    `Fecha: ${fechaLarga(dayKey(reserva.inicio))}, ${timeOf(reserva.inicio)} h (hora de Montevideo)`,
+    reserva.inicio ? `Fecha: ${fechaLarga(dayKey(reserva.inicio))}, ${timeOf(reserva.inicio)} h (hora de Montevideo)` : 'Fecha: a confirmar (consulta)',
     `Lugar: ${lugar}`,
     `Acompañantes: ${reserva.acompanantes} · Pestañas postizas: ${reserva.postizas ? 'sí' : 'no'}`,
     `Total: ${formatUYU(reserva.total)} · Seña (50 %): ${formatUYU(reserva.sena)} · Saldo: ${formatUYU(reserva.saldo)}`,
     `Estado: ${reserva.estado}`,
   ];
-  if (reserva.estado === 'Retenida' && reserva.fechaRetencion) {
+  if (reserva.estado === 'Fecha retenida' && reserva.fechaRetencion) {
     const vence = new Date(Date.parse(reserva.fechaRetencion) + HORAS_RETENCION * 3600000);
     lineas.push(`La fecha queda retenida hasta el ${vence.toLocaleString('es-UY', { timeZone: ZONA_NEGOCIO, dateStyle: 'short', timeStyle: 'short' })} (hora de Montevideo) si no se registra la seña.`);
   }
+  if (reserva.estado === 'Cancelada' && reserva.senaRetenida) lineas.push(`Seña de ${formatUYU(reserva.senaRetenida)} no devuelta.`);
   return lineas.join('\n');
 }
 
 export const numeroReserva = (r) => (r.numero ? String(r.numero).padStart(4, '0') : '—');
-
-/** Asigna número correlativo a datos guardados antes de que existiera (sin guardar). */
-export function normalizarCorrelativos(data) {
-  if (Number.isInteger(data.contador)) return data;
-  let n = 0;
-  const reservas = data.reservas.map((r) => (r.numero ? (n = Math.max(n, r.numero), r) : { ...r, numero: ++n }));
-  return { ...data, reservas, contador: Math.max(n, ...reservas.map((r) => r.numero)) };
-}
