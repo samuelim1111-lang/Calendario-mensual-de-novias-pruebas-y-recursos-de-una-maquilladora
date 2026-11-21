@@ -5,6 +5,13 @@
 
 Agenda mensual para una maquilladora de novias de Montevideo que trabaja en su estudio y a domicilio (hasta 60 km). React 19 + Tailwind CSS 4 + localStorage. Todo el build sale en **un solo `dist/index.html`** sin dependencias de CDN (solo las fuentes de Google).
 
+## Datos y privacidad
+
+- Todo se desarrolla y prueba con **datos sintéticos**: nombres inventados, emails `@example.com` y direcciones y lugares marcados como ficticios. No se carga información personal de terceros.
+- La app usa el **alias del negocio** («Agenda de novias», «Maquilladora titular») y no contacta al cliente ni a nadie: no envía mensajes, emails ni datos fuera del navegador.
+- Dudas de alcance: **partners@kodarvia.com** (nunca al cliente).
+- Idioma de la interfaz y la documentación: español rioplatense (Argentina), con voseo.
+
 ## Cómo correrlo
 
 ```bash
@@ -66,13 +73,13 @@ Al abrir por primera vez (si no existe la clave propia, o si tiene datos de una 
 - **2 fechas retenidas**: una retenida hace 46 h (vence ~2 h después de abrir) y la del **caso de aceptación** (novia a domicilio a 30 km a las 9:00 con 2 acompañantes y pestañas).
 - **4 señadas**, **2 con saldo pagado**, **1 cancelada** (con la seña retenida anotada), **3 consultas** (una sin fecha) y **2 realizadas** (en los días anteriores a hoy; si hoy es principio de mes, caen en el mes anterior).
 
-Los registros que el encargo no enumera están completados de forma coherente: las dos pruebas del sábado son de las novias que se casan semanas después (`pruebaDe`, misma novia), la consulta con prueba tentativa apunta a su boda, y cada retoque es de la novia de ese mismo día, después de su maquillaje. Los nombres, emails (`example.com`) y direcciones son ficticios. La marca es «Agenda de novias»; la persona es la «Maquilladora titular» del catálogo.
+Los registros que el encargo no enumera están completados de forma coherente: las dos pruebas del sábado son de las novias que se casan semanas después (`pruebaDe`, misma novia), la consulta con prueba tentativa apunta a su boda, y cada retoque es de la novia de ese mismo día, después de su maquillaje. Los nombres, emails (`example.com`), direcciones y salones son ficticios. La marca es «Agenda de novias»; la persona es la «Maquilladora titular» del catálogo.
 
 Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(...)` en `src/seed.js`, y restaurá desde Ajustes.
 
 ## Almacenamiento
 
-- Clave única: **`kodarvia.agenda-maquilladora.v1`** (JSON con `version: 3`, `recursos`, `servicios`, `reservas`, `tarifas`, `contador`).
+- Clave única: **`kodarvia.agenda-maquilladora.v1`** (JSON con `version: 4`, `recursos`, `servicios`, `reservas`, `tarifas`, `contador`).
 - «Restaurar datos de prueba» reescribe **solo esa clave**; no toca otras aplicaciones.
 - **Cada acción guarda el conjunto completo de datos de la demo** (una sola escritura del JSON). El cambio se aplica en pantalla **solo si esa escritura funcionó**.
 - Si `setItem` falla (cuota llena, modo privado, bloqueo): no se aplica nada, no se muestra éxito, no se ocupan recursos ni avanza el correlativo. Aparece *«No se pudo guardar… El cambio no se aplicó»* y el formulario conserva el borrador (también si vas a otra pantalla y volvés).

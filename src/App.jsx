@@ -1197,7 +1197,7 @@ function Ajustes({ data, commit, ahoraWall }) {
   return (
     <div className="max-w-3xl">
       <H1 sub={`Los datos se guardan en este navegador con la clave «${STORAGE_KEY}». No se tocan otras claves.`}>Ajustes</H1>
-      <AvisoDemo className="mb-5">Esta agenda es una demo. Los datos viven solo en este navegador: no hay cuentas ni inicio de sesión, y no se sincronizan con otros dispositivos ni con el negocio.</AvisoDemo>
+      <AvisoDemo className="mb-5">Esta agenda es una demo con datos ficticios. Vive solo en este navegador: sin cuentas, sin sincronizar con otros dispositivos y sin contacto con el negocio. Dudas de alcance: partners@kodarvia.com.</AvisoDemo>
       <Card>
         <h2 className="font-serif text-xl font-light">Prueba guiada del briefing</h2>
         <p className="mt-1 text-sm text-tinta-soft">Caso de aceptación: novia a domicilio a 30 km a las 9:00 con 2 acompañantes y pestañas. Se ejecuta sobre una copia aislada del catálogo inicial, en un sábado sin reservas: no guarda nada ni cambia tus reservas, el catálogo o los totales.</p>

@@ -1,10 +1,11 @@
-// Catálogo y datos sintéticos del briefing. Las fechas se calculan desde el día en que se
+// Catálogo y datos sintéticos del briefing. Personas, emails (example.com) y direcciones son ficticios:
+// no se carga información personal de terceros. Las fechas se calculan desde el día en que se
 // abre la app (hora de Montevideo), así caen en el mes actual y los dos siguientes.
 import {
   addDaysKey, calcularPrecio, dayKey, extrasDe, nowWall, TARIFAS_DEFECTO, verificarDisponibilidad, weekdayOfKey,
 } from './domain.js';
 
-export const VERSION_DATOS = 3;
+export const VERSION_DATOS = 4;
 
 export const RECURSOS_SEED = [
   { id: 'r-maquilladora', nombre: 'Maquilladora titular', tipo: 'Persona', principal: true, diasBloqueados: [] },
@@ -99,31 +100,31 @@ export function crearSeed(instant = new Date()) {
   const kReal = pasado(2);
 
   // Sábado Completo: a la maquilladora no le queda ningún hueco de 90 min (y ya tiene 2 novias, el máximo).
-  const n1 = mk('s-novia-domicilio', `${sab}T08:15`, 'Señada', { direccion: 'Av. Brasil 2850, Pocitos', km: 4, acompanantes: 2, postizas: true });
+  const n1 = mk('s-novia-domicilio', `${sab}T08:15`, 'Señada', { direccion: 'Calle de los Jazmines 1200, Pocitos (ficticia)', km: 4, acompanantes: 2, postizas: true });
   const n2 = mk('s-novia-estudio', `${sab}T11:15`, 'Saldo pagado', { acompanantes: 1 });
   // Las dos pruebas del sábado son de novias que se casan dentro de ~5 y ~8 semanas.
   const pr1 = mk('s-prueba', `${sab}T14:00`, 'Señada');
   const pr2 = mk('s-prueba', `${sab}T16:45`, 'Señada');
-  // Retoque antes de la ceremonia de la novia de las 11:15, en el hotel de la fiesta.
-  mk('s-retoque', `${sab}T19:00`, 'Señada', { de: n2, lugar: 'Domicilio', direccion: 'Hotel Carrasco, Rambla República de México 6451', km: 14 });
+  // Retoque antes de la ceremonia de la novia de las 11:15, en el salón de la fiesta.
+  mk('s-retoque', `${sab}T19:00`, 'Señada', { de: n2, lugar: 'Domicilio', direccion: 'Salón La Glorieta, Carrasco (ficticio)', km: 14 });
 
   // Fechas retenidas: una a punto de vencer (~2 h) y la del caso de aceptación (30 km, 9:00, 2 acompañantes, pestañas).
   mk('s-novia-estudio', `${kRet1}T10:00`, 'Fecha retenida', { fechaRetencion: haceHoras(46) });
-  const acept = mk('s-novia-domicilio', `${kAcept}T09:00`, 'Fecha retenida', { de: pr1, fechaRetencion: haceHoras(3), direccion: 'Camino Carrasco 7120, Carrasco', km: 30, acompanantes: 2, postizas: true });
+  const acept = mk('s-novia-domicilio', `${kAcept}T09:00`, 'Fecha retenida', { de: pr1, fechaRetencion: haceHoras(3), direccion: 'Camino de las Acacias 700 (ficticio)', km: 30, acompanantes: 2, postizas: true });
   pr1.pruebaDe = acept.id;
 
-  const bouza = mk('s-novia-domicilio', `${kBouza}T16:00`, 'Saldo pagado', { de: pr2, direccion: 'Bodega Bouza, Camino de la Redención 7658', km: 25 });
+  const bouza = mk('s-novia-domicilio', `${kBouza}T16:00`, 'Saldo pagado', { de: pr2, direccion: 'Bodega Los Aromos (ficticia)', km: 25 });
   pr2.pruebaDe = bouza.id;
   mk('s-novia-estudio', `${kCanc}T15:00`, 'Cancelada', { senaRetenida: true });
 
   // Consultas: anotadas sin fecha firme (no ocupan recursos). Una ya pidió hora tentativa para su prueba.
   const cons = mk('s-novia-estudio', `${kCons}T10:00`, 'Consulta');
-  mk('s-novia-domicilio', null, 'Consulta', { direccion: 'Ciudad de la Costa', km: 22, acompanantes: 1 });
+  mk('s-novia-domicilio', null, 'Consulta', { direccion: 'Pasaje Las Gardenias 45, Ciudad de la Costa (ficticio)', km: 22, acompanantes: 1 });
   mk('s-prueba', `${kPruebaCons}T17:00`, 'Consulta', { de: cons });
 
   // Realizadas (ya pasaron): una novia en estudio y su retoque antes de la ceremonia, el mismo día.
   const real = mk('s-novia-estudio', `${kReal}T11:00`, 'Realizada', { acompanantes: 1 });
-  mk('s-retoque', `${kReal}T17:30`, 'Realizada', { de: real, lugar: 'Domicilio', direccion: 'Parroquia Stella Maris, Av. Italia 3201', km: 6 });
+  mk('s-retoque', `${kReal}T17:30`, 'Realizada', { de: real, lugar: 'Domicilio', direccion: 'Capilla del Parque (ficticia)', km: 6 });
 
   return { version: VERSION_DATOS, recursos, servicios, reservas, tarifas, contador: reservas.length, creado: instant.toISOString() };
 }

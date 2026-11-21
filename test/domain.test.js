@@ -228,6 +228,9 @@ test('Datos sintéticos: 3 recursos, 6 servicios, 14 reservas sin choques y esta
     assert.ok(n && dayKey(n.inicio) === dayKey(t.inicio) && n.inicio < t.inicio, `${t.id}: retoque después de la novia, el mismo día`);
   }
   assert.ok(!seed.reservas.some((r) => /Valentina/.test(r.novia.nombre)));
+  // Datos y privacidad: solo datos sintéticos.
+  assert.ok(seed.reservas.every((r) => r.novia.email.endsWith('@example.com')), 'emails de ejemplo');
+  assert.ok(seed.reservas.filter((r) => r.lugar === 'Domicilio').every((r) => /ficti/.test(r.direccion)), 'direcciones ficticias');
   const aceptacion = seed.reservas.find((r) => r.km === 30);
   assert.deepEqual([aceptacion.total, aceptacion.sena], [17300, 8650]);
   assert.match(textoCompartir(aceptacion, seed.servicios.find((s) => s.id === aceptacion.servicioId)), /Total: \$ 17\.300 · Seña \(50 %\): \$ 8\.650/);
