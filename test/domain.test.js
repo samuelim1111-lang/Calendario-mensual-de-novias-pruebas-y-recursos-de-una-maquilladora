@@ -4,6 +4,7 @@ import {
   accionesPermitidas, aplicarTransicion, calcularPrecio, estadoDia, generarICS, horariosDisponibles,
   ocupacionDeReserva, oneMonthBefore, proponerPrueba, validarReserva, vencerRetenidas, verificarDisponibilidad,
   nowWall, dayKey, reservasFuturasDeRecurso, TARIFAS_DEFECTO,
+  ejecutarPruebaGuiada, textoCompartir, normalizarCorrelativos,
 } from '../src/domain.js';
 import { RECURSOS_SEED, SERVICIOS_SEED, crearSeed } from '../src/seed.js';
 
@@ -183,4 +184,26 @@ test('Datos sintéticos: 14 reservas sin choques, sábado Completo, estados pedi
   assert.equal(venc.cambios, 0, 'ninguna retenida debería vencer al abrir');
   assert.equal(vencerRetenidas(seed.reservas, now.getTime() + 2.1 * 3600000).cambios, 1, 'una vence en ~2 h');
   assert.ok(reservasFuturasDeRecurso('r-maquilladora', seed, nowWall(now)).length > 0);
+});
+
+test('Prueba guiada en copia aislada: resultados esperados y catálogo intacto', () => {
+  const antesR = JSON.stringify(RECURSOS_SEED); const antesS = JSON.stringify(SERVICIOS_SEED);
+  const r = ejecutarPruebaGuiada(RECURSOS_SEED, SERVICIOS_SEED, '2027-03-06');
+  assert.equal(r.ok, true, JSON.stringify(r.pasos, null, 1));
+  const obs = r.pasos.map((p) => p.observado);
+  assert.ok(obs.includes('08:00–10:45') && obs.includes('10:45–12:15'));
+  assert.match(obs[3], /^Se acepta/); assert.match(obs[4], /^Se rechaza: Lucía · Asistente no está libre de 10:45 a 12:15/);
+  assert.equal(JSON.stringify(RECURSOS_SEED), antesR); assert.equal(JSON.stringify(SERVICIOS_SEED), antesS);
+});
+
+test('Texto para compartir y correlativos', () => {
+  const seed = crearSeed(new Date('2026-11-21T12:00:00Z'));
+  assert.equal(seed.contador, 14);
+  assert.deepEqual(seed.reservas.map((x) => x.numero), Array.from({ length: 14 }, (_, i) => i + 1));
+  const t = textoCompartir(seed.reservas[0], seed.servicios[0], Date.now());
+  assert.match(t, /^Reserva N\.º 0001 · Novia · Día de boda/);
+  assert.match(t, /Seña \(50 %\)/);
+  const viejo = { ...seed, contador: undefined, reservas: seed.reservas.map(({ numero, ...x }) => x) };
+  const n = normalizarCorrelativos(viejo);
+  assert.equal(n.contador, 14); assert.equal(n.reservas[13].numero, 14);
 });

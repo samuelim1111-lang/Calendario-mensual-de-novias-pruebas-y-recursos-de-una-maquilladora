@@ -68,7 +68,7 @@ export function crearSeed(instant = new Date()) {
     const base = { lugar: 'Estudio', direccion: '', km: 0, acompanantes: 0, postizas: false, ...extra };
     const p = calcularPrecio({ servicio: s, ...base }, tarifas);
     const r = {
-      id: `res-${String(reservas.length + 1).padStart(2, '0')}`,
+      id: `res-${String(reservas.length + 1).padStart(2, '0')}`, numero: reservas.length + 1,
       servicioId, inicio, ...base, novia: { nombre, email },
       total: p.total, sena: p.sena, saldo: p.saldo, estado,
       pagoFueraPlazo: false, fechaRetencion: extra.fechaRetencion || haceHoras(24 * 6),
@@ -111,5 +111,5 @@ export function crearSeed(instant = new Date()) {
     mk('s-prueba', prop.inicio, 'Confirmada', { novia: boda.novia, pruebaDe: boda.id });
   }
 
-  return { version: 1, recursos, servicios, reservas, tarifas, creado: instant.toISOString() };
+  return { version: 1, recursos, servicios, reservas, tarifas, contador: reservas.length, creado: instant.toISOString() };
 }

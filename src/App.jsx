@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as D from './domain.js';
-import { cargar, guardar, borrarPropios, setSimularFallo, getSimularFallo, STORAGE_KEY } from './storage.js';
-import { crearSeed } from './seed.js';
+import { cargar, guardar, setSimularFallo, getSimularFallo, STORAGE_KEY } from './storage.js';
+import { crearSeed, RECURSOS_SEED, SERVICIOS_SEED } from './seed.js';
 
 // ---------------- utilidades de UI ----------------
 const cx = (...a) => a.filter(Boolean).join(' ');
@@ -56,6 +56,13 @@ const inputCls = (err) => cx('w-full rounded-xl border bg-white px-3 py-2.5 text
 function Card({ className, children }) {
   return <section className={cx('rounded-2xl border border-tinta/10 bg-white/80 p-4 shadow-[0_1px_0_rgba(74,62,58,0.04)] sm:p-6', className)}>{children}</section>;
 }
+function AvisoDemo({ children, className }) {
+  return (
+    <p className={cx('rounded-xl border border-oro/40 bg-oro-100 px-3 py-2 text-sm text-oro-700', className)}>
+      <span className="mr-1.5 rounded-full bg-oro-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">Demo</span>{children}
+    </p>
+  );
+}
 function H1({ children, sub }) {
   return (
     <div className="mb-5">
@@ -106,20 +113,30 @@ export default function App() {
   const [tick, setTick] = useState(Date.now());
   const ahoraWall = useMemo(() => D.nowWall(new Date(tick)), [tick]);
 
+  const [recienCreada, setRecienCreada] = useState(null);
+  const [borrador, setBorrador] = useState(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
   const persistir = useCallback((next) => {
     const err = guardar(next);
     setSaveError(err);
     return err;
   }, []);
 
+  // Cada acción guarda el conjunto completo de datos de la demo. Si el guardado
+  // falla, no se aplica nada: ni la reserva, ni recursos, ni el correlativo.
   const commit = useCallback((updater, msg) => {
-    setData((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      persistir(next);
-      return next;
-    });
+    const prev = dataRef.current;
+    const next = typeof updater === 'function' ? updater(prev) : updater;
+    const err = guardar(next);
+    if (err) { setSaveError(err); return { ok: false, error: err }; }
+    dataRef.current = next;
+    setData(next);
+    setSaveError(null);
     if (msg) setToast(msg);
-  }, [persistir]);
+    return { ok: true, data: next };
+  }, []);
 
   // Primer guardado de los datos sintéticos.
   useEffect(() => { if (inicial.nuevo) persistir(inicial.data); }, []);
@@ -136,14 +153,14 @@ export default function App() {
 
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 4200); return () => clearTimeout(id); }, [toast]);
 
-  const ctx = { data, commit, go, ahoraWall, ahoraMs: tick, setToast };
+  const ctx = { data, commit, go, ahoraWall, ahoraMs: tick, setToast, recienCreada, setRecienCreada, borrador, setBorrador };
 
   let view;
   if (route.startsWith('nueva')) view = <NuevaReserva {...ctx} fechaInicial={route.slice(6)} key={route} />;
   else if (route.startsWith('reserva-')) view = <DetalleReserva {...ctx} id={route.slice(8)} key={route} />;
   else if (route === 'recursos') view = <Recursos {...ctx} />;
   else if (route === 'servicios') view = <Servicios {...ctx} />;
-  else if (route === 'ajustes') view = <Ajustes {...ctx} setData={setData} persistir={persistir} />;
+  else if (route === 'ajustes') view = <Ajustes {...ctx} />;
   else view = <Calendario {...ctx} />;
 
   const tabs = [['calendario', 'Calendario'], ['nueva', 'Nueva reserva'], ['recursos', 'Recursos'], ['servicios', 'Servicios y tarifas'], ['ajustes', 'Ajustes']];
@@ -169,8 +186,8 @@ export default function App() {
         {saveError && (
           <div role="alert" className="border-t border-rojo/30 bg-rojo-100 px-4 py-2 text-sm text-rojo">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
-              <span><strong className="font-medium">No se pudo guardar.</strong> {saveError} Los cambios siguen en pantalla, pero se perderán si recargás.</span>
-              <Btn variant="danger" className="py-1" onClick={() => persistir(data)}>Reintentar guardado</Btn>
+              <span><strong className="font-semibold">No se pudo guardar.</strong> {saveError} El cambio no se aplicó: lo que estabas cargando sigue en pantalla para que lo reintentes.</span>
+              <Btn variant="danger" className="py-1" onClick={() => setSaveError(null)}>Cerrar aviso</Btn>
             </div>
           </div>
         )}
@@ -400,16 +417,20 @@ function DiaDetalle({ k, onClose, data, go, ahoraWall, fRecurso }) {
 }
 
 // ---------------- Nueva reserva ----------------
-function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
+function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial, setRecienCreada, borrador, setBorrador }) {
   const hoy = D.dayKey(ahoraWall);
-  const [f, setF] = useState({
-    nombre: '', email: '', servicioId: '', fecha: /^\d{4}-\d{2}-\d{2}$/.test(fechaInicial) ? fechaInicial : '', hora: '',
-    lugar: 'Estudio', direccion: '', km: '', acompanantes: 0, postizas: false,
-  });
+  const fechaUrl = /^\d{4}-\d{2}-\d{2}$/.test(fechaInicial) ? fechaInicial : '';
+  const [recuperado] = useState(() => !!borrador);
+  const [f, setF] = useState(() => (borrador
+    ? { ...borrador, fecha: fechaUrl || borrador.fecha }
+    : { nombre: '', email: '', servicioId: '', fecha: fechaUrl, hora: '', lugar: 'Estudio', direccion: '', km: '', acompanantes: 0, postizas: false }));
+  // El borrador vive en la app: sobrevive a un guardado fallido y a ir y volver de otra pantalla.
+  useEffect(() => { setBorrador(f.nombre || f.email || f.servicioId || f.hora || f.direccion || f.km ? f : null); }, [f]);
   const [errores, setErrores] = useState({});
   const [rechazo, setRechazo] = useState(null);
   const [intentado, setIntentado] = useState(false);
-  const set = (k, v) => { setF((p) => ({ ...p, [k]: v })); setRechazo(null); };
+  const [errorGuardado, setErrorGuardado] = useState(null);
+  const set = (k, v) => { setF((p) => ({ ...p, [k]: v })); setRechazo(null); setErrorGuardado(null); };
 
   const servicio = servicioDe(data, f.servicioId);
   const precio = D.calcularPrecio({ servicio, lugar: f.lugar, km: Number(f.km) || 0, acompanantes: Number(f.acompanantes) || 0, postizas: f.postizas }, data.tarifas);
@@ -436,13 +457,24 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
     reserva.historial = [{ en: reserva.fechaRetencion, de: null, a: 'Retenida', motivo: 'Fecha retenida' }];
     const v = D.verificarDisponibilidad(reserva, data);
     if (!v.ok) { setRechazo(v.motivos); return; }
-    commit((d) => ({ ...d, reservas: [...d.reservas, reserva] }), 'Fecha retenida. Tiene 48 h para registrar la seña.');
+    const numero = (data.contador || 0) + 1;
+    reserva.numero = numero;
+    const res = commit((d) => ({ ...d, contador: numero, reservas: [...d.reservas, reserva] }));
+    if (!res.ok) { setErrorGuardado(res.error); return; }
+    setBorrador(null);
+    setRecienCreada(reserva.id);
     go('reserva-' + reserva.id);
   };
 
   return (
     <form onSubmit={submit} noValidate>
       <H1 sub="La fecha queda retenida 48 h hasta que se registre la seña del 50 %.">Nueva reserva</H1>
+      {recuperado && (
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-tinta-soft">Recuperamos tu borrador sin guardar.
+          <button type="button" className="underline hover:text-tinta" onClick={() => { setBorrador(null); setF({ nombre: '', email: '', servicioId: '', fecha: fechaUrl, hora: '', lugar: 'Estudio', direccion: '', km: '', acompanantes: 0, postizas: false }); }}>Empezar de cero</button>
+        </p>
+      )}
+      <AvisoDemo className="mb-5">Esto es una demo: al guardar, la reserva queda solo en este navegador. No se contacta al negocio ni a la novia, y no se envía ningún mensaje.</AvisoDemo>
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
           <Card>
@@ -546,6 +578,13 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
               </div>
             )}
             {intentado && Object.keys(errores).length > 0 && <p className="mt-3 text-xs text-rojo" role="alert">Revisá los campos marcados.</p>}
+            {errorGuardado && (
+              <div role="alert" className="mt-4 rounded-xl border border-rojo/40 bg-rojo-100 p-3 text-sm text-rojo">
+                <p className="font-semibold">No se guardó la reserva.</p>
+                <p className="mt-1">{errorGuardado} Tu borrador sigue en el formulario; no se asignó número ni se ocuparon recursos.</p>
+                <p className="mt-1 text-xs">Si activaste «Simular fallo de guardado» en Ajustes, desactivalo y volvé: el borrador te espera.</p>
+              </div>
+            )}
             <Btn type="submit" variant="gold" className="mt-4 w-full py-3">Guardar reserva</Btn>
             <Btn variant="ghost" className="mt-1 w-full" onClick={() => history.back()}>Volver</Btn>
           </Card>
@@ -588,7 +627,7 @@ async function guardarComoTxt(filename, contenido) {
   } catch { return false; }
 }
 
-function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) {
+function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast, recienCreada }) {
   const r = data.reservas.find((x) => x.id === id);
   const [fueraPlazo, setFueraPlazo] = useState(false);
   const [error, setError] = useState(null);
@@ -610,7 +649,8 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
     setError(null);
     try {
       const next = D.aplicarTransicion(r, accId, ahoraWall, new Date().toISOString(), { pagoFueraPlazo: fueraPlazo });
-      commit((d) => ({ ...d, reservas: d.reservas.map((x) => (x.id === r.id ? next : x)) }), `Estado: ${next.estado}.`);
+      const res = commit((d) => ({ ...d, reservas: d.reservas.map((x) => (x.id === r.id ? next : x)) }), `Estado: ${next.estado}.`);
+      if (!res.ok) setError(`No se guardó: ${res.error} La reserva sigue en «${r.estado}».`);
     } catch (e) { setError(e.message); }
   };
   const abrirPrueba = () => {
@@ -620,15 +660,17 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
   };
   const confirmarPrueba = () => {
     const p = D.calcularPrecio({ servicio: servicioPrueba, lugar: 'Estudio', km: 0, acompanantes: 0, postizas: false }, data.tarifas);
+    const numero = (data.contador || 0) + 1;
     const nueva = {
-      id: D.uid('res'), novia: { ...r.novia }, servicioId: servicioPrueba.id, inicio: prueba.inicio, lugar: 'Estudio', direccion: '', km: 0,
+      id: D.uid('res'), numero, novia: { ...r.novia }, servicioId: servicioPrueba.id, inicio: prueba.inicio, lugar: 'Estudio', direccion: '', km: 0,
       acompanantes: 0, postizas: false, total: p.total, sena: p.sena, saldo: p.saldo, estado: 'Retenida', pagoFueraPlazo: false,
       fechaRetencion: new Date().toISOString(), pruebaDe: r.id,
     };
     nueva.historial = [{ en: nueva.fechaRetencion, de: null, a: 'Retenida', motivo: `Prueba de ${s?.nombre}` }];
     const v = D.verificarDisponibilidad(nueva, data);
     if (!v.ok) { setPrueba({ ...prueba, error: v.motivos.join(' ') }); return; }
-    commit((d) => ({ ...d, reservas: [...d.reservas, nueva] }), 'Prueba agendada (retenida 48 h).');
+    const res = commit((d) => ({ ...d, contador: numero, reservas: [...d.reservas, nueva] }), `Prueba N.º ${D.numeroReserva(nueva)} agendada en la demo (retenida 48 h). No se avisó a nadie.`);
+    if (!res.ok) { setPrueba({ ...prueba, error: `No se guardó: ${res.error} No se agendó nada.` }); return; }
     setPrueba(null);
   };
   const descargar = async () => {
@@ -641,13 +683,19 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
       <a href="#calendario" className="text-sm text-tinta-soft hover:text-tinta">‹ Calendario</a>
       <div className="mt-2 mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-oro-700">{s?.nombre}</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-oro-700">Reserva N.º {D.numeroReserva(r)} · {s?.nombre}</p>
           <h1 className="font-serif text-4xl font-light text-tinta">{r.novia.nombre}</h1>
           <p className="mt-1 text-sm text-tinta-soft">{cap(D.fechaLarga(D.dayKey(r.inicio)))} · {D.timeOf(r.inicio)} h · {r.lugar}</p>
         </div>
         <EstadoChip estado={r.estado} className="px-3 py-1 text-sm" />
       </div>
 
+      {recienCreada === r.id && (
+        <div role="status" className="mb-4 rounded-2xl border border-salvia/50 bg-salvia-100 px-4 py-3 text-sm text-salvia-700">
+          <p><strong className="font-semibold">Reserva N.º {D.numeroReserva(r)} guardada en esta demo.</strong> Quedó solo en este navegador: no se contactó al negocio ni a la novia.</p>
+          <p className="mt-1">Para avisarle, usá «Compartir» o «Copiar texto» y envíaselo vos.</p>
+        </div>
+      )}
       {r.estado === 'Retenida' && (
         <div className={cx('mb-4 rounded-2xl border px-4 py-3 text-sm', restante < 6 * 3600000 ? 'border-rojo/40 bg-rojo-100 text-rojo' : 'border-oro/40 bg-oro-100 text-oro-700')}>
           Fecha retenida sin seña. Se cancela sola en <strong className="font-medium">{formatoRestante(restante)}</strong> si no se registra la seña de {D.formatUYU(r.sena)}.
@@ -723,6 +771,7 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
               {verIcs && <IcsBox ics={ics} limitado={verIcs === 'limitado'} nombre={icsNombre} />}
             </div>
           </Card>
+          <Compartir texto={D.textoCompartir(r, s, ahoraMs)} />
         </aside>
       </div>
 
@@ -802,16 +851,18 @@ function Recursos({ data, commit, ahoraWall }) {
       </div>
       {edit && <RecursoForm rec={edit} data={data} onClose={() => setEdit(null)} onSave={(rec) => {
         const conId = rec.id ? rec : { ...rec, id: D.uid('r') };
-        commit((d) => {
+        const res = commit((d) => {
           let recursos = rec.id ? d.recursos.map((x) => (x.id === rec.id ? conId : x)) : [...d.recursos, conId];
           if (conId.principal) recursos = recursos.map((x) => ({ ...x, principal: x.id === conId.id }));
           return { ...d, recursos };
         }, 'Recurso guardado.');
-        setEdit(null);
+        if (res.ok) setEdit(null);
+        return res;
       }} />}
       <Modal open={!!borrar} onClose={() => setBorrar(null)} title="Dar de baja recurso">
         <p className="text-sm">¿Dar de baja «{borrar?.nombre}»? No tiene reservas futuras ni servicios que lo usen.</p>
-        <div className="mt-5 flex justify-end gap-2"><Btn variant="ghost" onClick={() => setBorrar(null)}>Cancelar</Btn><Btn variant="danger" onClick={() => { commit((d) => ({ ...d, recursos: d.recursos.filter((x) => x.id !== borrar.id) }), 'Recurso dado de baja.'); setBorrar(null); }}>Dar de baja</Btn></div>
+        <div className="mt-5 flex justify-end gap-2"><Btn variant="ghost" onClick={() => setBorrar(null)}>Cancelar</Btn><Btn variant="danger" onClick={() => { const res = commit((d) => ({ ...d, recursos: d.recursos.filter((x) => x.id !== borrar.id) }), 'Recurso dado de baja.'); if (res.ok) setBorrar(null); else setBorrar({ ...borrar, error: res.error }); }}>Dar de baja</Btn></div>
+        {borrar?.error && <p role="alert" className="mt-3 rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">No se guardó: {borrar.error} El recurso sigue activo.</p>}
       </Modal>
     </div>
   );
@@ -826,7 +877,7 @@ function RecursoForm({ rec, onClose, onSave }) {
     if (!['Persona', 'Espacio', 'Equipo'].includes(r.tipo)) e.tipo = 'Elegí Persona, Espacio o Equipo.';
     if (r.principal && r.tipo !== 'Persona') e.tipo = 'El recurso principal debe ser una persona.';
     setErr(e);
-    if (!Object.keys(e).length) onSave({ ...r, nombre: r.nombre.trim() });
+    if (!Object.keys(e).length) { const res = onSave({ ...r, nombre: r.nombre.trim() }); if (res && !res.ok) setErr({ form: `No se guardó: ${res.error} Tus cambios siguen en el formulario.` }); }
   };
   return (
     <Modal open title={rec.id ? 'Editar recurso' : 'Nuevo recurso'} onClose={onClose}>
@@ -841,6 +892,7 @@ function RecursoForm({ rec, onClose, onSave }) {
             {!r.diasBloqueados.length && <span className="text-xs text-tinta-soft">Ninguno</span>}
           </div>
         </Field>
+        {err.form && <p role="alert" className="rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">{err.form}</p>}
         <div className="flex justify-end gap-2 pt-2"><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="gold" onClick={guardarR}>Guardar</Btn></div>
       </div>
     </Modal>
@@ -885,14 +937,16 @@ function Servicios({ data, commit }) {
           <div className="flex items-end"><Btn variant="primary" className="w-full" onClick={() => {
             const n = Object.fromEntries(Object.entries(tar).map(([k, v]) => [k, Number(v)]));
             if (Object.values(n).some((v) => !Number.isFinite(v) || v < 0)) { setTarErr('Las tarifas deben ser números mayores o iguales a 0.'); return; }
-            setTarErr(null); commit((d) => ({ ...d, tarifas: n }), 'Tarifas guardadas. Se aplican a las reservas nuevas.');
+            const res = commit((d) => ({ ...d, tarifas: n }), 'Tarifas guardadas. Se aplican a las reservas nuevas.');
+            setTarErr(res.ok ? null : `No se guardó: ${res.error} Las tarifas siguen como estaban.`);
           }}>Guardar tarifas</Btn></div>
         </div>
         {tarErr && <p role="alert" className="mt-2 text-xs text-rojo">{tarErr}</p>}
       </Card>
       {edit && <ServicioForm s={edit} data={data} onClose={() => setEdit(null)} onSave={(s) => {
-        commit((d) => ({ ...d, servicios: s.id ? d.servicios.map((x) => (x.id === s.id ? s : x)) : [...d.servicios, { ...s, id: D.uid('s') }] }), 'Servicio guardado.');
-        setEdit(null);
+        const res = commit((d) => ({ ...d, servicios: s.id ? d.servicios.map((x) => (x.id === s.id ? s : x)) : [...d.servicios, { ...s, id: D.uid('s') }] }), 'Servicio guardado.');
+        if (res.ok) setEdit(null);
+        return res;
       }} />}
     </div>
   );
@@ -916,7 +970,8 @@ function ServicioForm({ s, data, onClose, onSave }) {
     setErr(e);
     if (Object.keys(e).length) return;
     const tramos = f.tramos.map((t) => ({ recursoId: t.recursoId, offsetMin: +t.offsetMin, duracionMin: +t.duracionMin }));
-    onSave({ ...f, nombre: f.nombre.trim(), precioUYU: precio, tramos, duracionMin: duracion, recursosIds: tramos.map((t) => t.recursoId) });
+    const res = onSave({ ...f, nombre: f.nombre.trim(), precioUYU: precio, tramos, duracionMin: duracion, recursosIds: tramos.map((t) => t.recursoId) });
+    if (res && !res.ok) setErr({ form: `No se guardó: ${res.error} Tus cambios siguen en el formulario.` });
   };
   return (
     <Modal open title={s.id ? 'Editar servicio' : 'Nuevo servicio'} onClose={onClose} wide>
@@ -946,6 +1001,7 @@ function ServicioForm({ s, data, onClose, onSave }) {
           <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8935A]" checked={!!f.admiteDomicilio} onChange={(e) => setF({ ...f, admiteDomicilio: e.target.checked })} />Admite domicilio</label>
           <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8935A]" checked={!!f.esPrueba} onChange={(e) => setF({ ...f, esPrueba: e.target.checked })} />Es prueba (lo usa «Agendar prueba»)</label>
         </div>
+        {err.form && <p role="alert" className="rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">{err.form}</p>}
         <div className="flex justify-end gap-2 pt-2"><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="gold" onClick={guardarS}>Guardar</Btn></div>
       </div>
     </Modal>
@@ -953,32 +1009,99 @@ function ServicioForm({ s, data, onClose, onSave }) {
 }
 
 // ---------------- Ajustes ----------------
-function Ajustes({ data, setData, persistir, setToast }) {
+function proximoSabado(ahoraWall, semanas) {
+  let k = D.addDaysKey(D.dayKey(ahoraWall), semanas * 7);
+  while (D.weekdayOfKey(k) !== 6) k = D.addDaysKey(k, 1);
+  return k;
+}
+
+function Ajustes({ data, commit, ahoraWall }) {
   const [confirmar, setConfirmar] = useState(false);
+  const [restErr, setRestErr] = useState(null);
   const [fallo, setFallo] = useState(getSimularFallo());
+  const [guiada, setGuiada] = useState(null);
+  const correrGuiada = () => {
+    let antes = null;
+    try { antes = window.localStorage.getItem(STORAGE_KEY); } catch { antes = null; }
+    const fecha = proximoSabado(ahoraWall, 10);
+    const resultado = D.ejecutarPruebaGuiada(RECURSOS_SEED, SERVICIOS_SEED, fecha);
+    let despues = null;
+    try { despues = window.localStorage.getItem(STORAGE_KEY); } catch { despues = null; }
+    setGuiada({ ...resultado, datosIntactos: antes === despues });
+  };
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <H1 sub={`Los datos se guardan en este navegador con la clave «${STORAGE_KEY}». No se tocan otras claves.`}>Ajustes</H1>
+      <AvisoDemo className="mb-5">Esta agenda es una demo. Los datos viven solo en este navegador: no hay cuentas ni inicio de sesión, y no se sincronizan con otros dispositivos ni con el negocio.</AvisoDemo>
       <Card>
+        <h2 className="font-serif text-xl font-light">Prueba guiada del briefing</h2>
+        <p className="mt-1 text-sm text-tinta-soft">Se ejecuta sobre una copia aislada del catálogo inicial, en un sábado sin reservas. No guarda nada ni cambia tus reservas, el catálogo o los totales.</p>
+        <Btn variant="gold" className="mt-4" onClick={correrGuiada}>Ejecutar prueba guiada</Btn>
+        {guiada && (
+          <div className="mt-4" data-testid="prueba-guiada">
+            <p className={cx('mb-3 rounded-xl px-3 py-2 text-sm', guiada.ok ? 'bg-salvia-100 text-salvia-700' : 'bg-rojo-100 text-rojo')}>
+              <strong className="font-semibold">{guiada.ok ? 'Resultado: correcto.' : 'Resultado: no coincide.'}</strong> Copia aislada del {D.fechaLarga(guiada.fecha)}. {guiada.datosIntactos ? 'Tus datos guardados no cambiaron.' : 'Atención: los datos guardados cambiaron.'}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-left text-sm">
+                <thead className="text-[11px] uppercase tracking-[0.14em] text-tinta-soft"><tr><th className="py-2 pr-3 font-normal">Paso</th><th className="py-2 pr-3 font-normal">Esperado</th><th className="py-2 pr-3 font-normal">Observado</th><th className="py-2 font-normal" /></tr></thead>
+                <tbody className="divide-y divide-tinta/10">
+                  {guiada.pasos.map((p, i) => (
+                    <tr key={i}><td className="py-2 pr-3">{p.paso}</td><td className="py-2 pr-3 text-tinta-soft">{p.esperado}</td><td className="py-2 pr-3">{p.observado}</td><td className={cx('py-2 font-semibold', p.ok ? 'text-salvia-700' : 'text-rojo')}>{p.ok ? '✓' : '✗'}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Card>
+      <Card className="mt-5">
         <h2 className="font-serif text-xl font-light">Datos de prueba</h2>
-        <p className="mt-1 text-sm text-tinta-soft">Vuelve a cargar los 4 recursos, 6 servicios y 14 reservas de ejemplo, con fechas calculadas desde hoy. Borra solo los datos de esta agenda.</p>
-        <Btn variant="danger" className="mt-4" onClick={() => setConfirmar(true)}>Restaurar datos de prueba</Btn>
+        <p className="mt-1 text-sm text-tinta-soft">Vuelve a cargar los 4 recursos, 6 servicios y 14 reservas de ejemplo, con fechas calculadas desde hoy. Reemplaza solo los datos de esta agenda.</p>
+        <Btn variant="danger" className="mt-4" onClick={() => { setRestErr(null); setConfirmar(true); }}>Restaurar datos de prueba</Btn>
       </Card>
       <Card className="mt-5">
         <h2 className="font-serif text-xl font-light">Probar un guardado fallido</h2>
-        <p className="mt-1 text-sm text-tinta-soft">Mientras esté activo, cada guardado falla como si el navegador no tuviera espacio. Hacé cualquier cambio y vas a ver el aviso arriba. No se recuerda al recargar.</p>
+        <p className="mt-1 text-sm text-tinta-soft">Mientras esté activo, cada guardado falla como si el navegador no tuviera espacio. Probá crear una reserva: vas a ver el aviso, el borrador queda en el formulario y no se asigna número ni se ocupan recursos. No se recuerda al recargar.</p>
         <label className="mt-4 flex items-center gap-3 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-[#B8935A]" checked={fallo} onChange={(e) => { setSimularFallo(e.target.checked); setFallo(e.target.checked); if (!e.target.checked) persistir(data); }} />
+          <input type="checkbox" className="h-4 w-4 accent-[#B8935A]" checked={fallo} onChange={(e) => { setSimularFallo(e.target.checked); setFallo(e.target.checked); }} />
           Simular fallo de guardado
         </label>
       </Card>
       <Modal open={confirmar} onClose={() => setConfirmar(false)} title="Restaurar datos de prueba">
         <p className="text-sm">Se reemplazan todas las reservas, recursos, servicios y tarifas de esta agenda por los datos de ejemplo. No se puede deshacer.</p>
+        {restErr && <p role="alert" className="mt-3 rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">No se guardó: {restErr} Tus datos siguen como estaban.</p>}
         <div className="mt-5 flex justify-end gap-2"><Btn variant="ghost" onClick={() => setConfirmar(false)}>Cancelar</Btn><Btn variant="danger" onClick={() => {
-          borrarPropios(); const seed = crearSeed(); setData(seed); const err = persistir(seed); setConfirmar(false);
-          setToast(err ? 'Datos restaurados en pantalla, pero no se pudieron guardar.' : 'Datos de prueba restaurados.');
+          const res = commit(crearSeed(), 'Datos de prueba restaurados.');
+          if (res.ok) setConfirmar(false); else setRestErr(res.error);
         }}>Restaurar</Btn></div>
       </Modal>
     </div>
+  );
+}
+
+function Compartir({ texto }) {
+  const [estado, setEstado] = useState(null);
+  const ref = useRef(null);
+  const puedeCompartir = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(texto); setEstado('Texto copiado. Pegalo donde quieras y envialo vos.'); }
+    catch { ref.current?.focus(); ref.current?.select(); setEstado('No se pudo copiar solo: el texto quedó seleccionado, copialo con Ctrl/Cmd + C.'); }
+  };
+  const compartir = async () => {
+    try { await navigator.share({ text: texto }); setEstado('Se abrió el menú de tu dispositivo. El envío lo hacés vos.'); }
+    catch (e) { if (e?.name !== 'AbortError') setEstado('No se pudo abrir el menú de compartir. Usá «Copiar texto».'); }
+  };
+  return (
+    <Card className="bg-white">
+      <h2 className="font-serif text-xl font-light">Compartir</h2>
+      <p className="mt-1 text-xs text-tinta-soft">Prepara el texto para que lo envíes vos, por WhatsApp o donde quieras. La app no envía mensajes ni se conecta con ningún servicio.</p>
+      <textarea ref={ref} readOnly aria-label="Texto para compartir" className="mt-3 h-44 w-full rounded-xl border border-tinta/15 bg-crema p-2 text-xs leading-relaxed text-tinta" value={texto} onFocus={(e) => e.target.select()} />
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Btn variant="primary" className="flex-1" onClick={copiar}>Copiar texto</Btn>
+        {puedeCompartir && <Btn variant="soft" className="flex-1" onClick={compartir}>Compartir…</Btn>}
+      </div>
+      {estado && <p role="status" className="mt-2 text-xs text-tinta-soft">{estado}</p>}
+    </Card>
   );
 }

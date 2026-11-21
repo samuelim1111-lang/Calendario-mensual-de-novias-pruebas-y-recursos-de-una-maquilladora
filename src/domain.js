@@ -439,3 +439,67 @@ export function fechaCorta(key) {
   return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
 }
 export const uid = (p = 'id') => `${p}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
+
+// ---------- Prueba guiada (copia aislada) ----------
+
+/**
+ * Ejecuta el caso del briefing sobre una copia aislada del catálogo: no lee ni
+ * escribe las reservas guardadas. Devuelve los pasos con lo esperado y lo observado.
+ */
+export function ejecutarPruebaGuiada(recursosBase, serviciosBase, fecha) {
+  const recursos = structuredClone(recursosBase);
+  const servicios = structuredClone(serviciosBase);
+  const reservas = [];
+  const ctx = { reservas, servicios, recursos };
+  const nombreDe = (id) => recursos.find((r) => r.id === id)?.nombre || id;
+  const franja = (reserva, recursoId) => {
+    const o = ocupacionDeReserva(reserva, servicios, recursos).find((x) => x.recursoId === recursoId);
+    return o ? `${hhmm(Math.round((o.inicio % 86400000) / 60000))}–${hhmm(Math.round((o.fin % 86400000) / 60000))}` : '—';
+  };
+  const mk = (id, servicioId, hora, extra = {}) => ({ id, servicioId, inicio: `${fecha}T${hora}`, lugar: 'Estudio', km: 0, acompanantes: 0, postizas: false, estado: 'Confirmada', novia: { nombre: id, email: `${id}@demo.test` }, ...extra });
+
+  const boda = mk('guiada-boda', 's-boda', '08:00');
+  const pasos = [];
+  const v0 = verificarDisponibilidad(boda, ctx);
+  if (v0.ok) reservas.push(boda);
+  pasos.push({ paso: 'Novia · Día de boda a las 08:00 en el estudio', esperado: 'Se acepta', observado: v0.ok ? 'Se acepta' : 'Se rechaza: ' + v0.motivos[0], ok: v0.ok });
+  pasos.push({ paso: `Ocupación de ${nombreDe('r-maquilladora')}`, esperado: '08:00–10:45', observado: franja(boda, 'r-maquilladora') });
+  pasos.push({ paso: `Ocupación de ${nombreDe('r-asistente')}`, esperado: '10:45–12:15', observado: franja(boda, 'r-asistente') });
+  const tarea = mk('guiada-retoque', 's-retoque', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'Demo' });
+  const v1 = verificarDisponibilidad(tarea, ctx);
+  pasos.push({ paso: 'Tarea a las 11:00 que solo necesita a la maquilladora (Retoque y fotos)', esperado: 'Se acepta (la asistente ocupada no la bloquea)', observado: v1.ok ? 'Se acepta (la asistente ocupada no la bloquea)' : 'Se rechaza: ' + v1.motivos.join(' ') });
+  const contraste = mk('guiada-peinado', 's-peinado', '11:00', { lugar: 'Domicilio', km: 5, direccion: 'Demo' });
+  const v2 = verificarDisponibilidad(contraste, ctx);
+  pasos.push({ paso: 'Contraste: Peinado de novia a las 11:00 (necesita a la asistente)', esperado: 'Se rechaza por la asistente', observado: v2.ok ? 'Se acepta' : 'Se rechaza: ' + v2.motivos[0] });
+  for (const p of pasos) if (p.ok === undefined) p.ok = p.observado === p.esperado || (p.esperado.startsWith('Se rechaza') && p.observado.startsWith('Se rechaza'));
+  return { fecha, pasos, ok: pasos.every((p) => p.ok) };
+}
+
+// ---------- Compartir (solo texto; lo envía la persona a mano) ----------
+export function textoCompartir(reserva, servicio, ahoraMs) {
+  const lugar = reserva.lugar === 'Domicilio' ? `${reserva.direccion} (${reserva.km} km)` : 'Estudio';
+  const lineas = [
+    `Reserva N.º ${numeroReserva(reserva)} · ${servicio?.nombre || 'Servicio'}`,
+    `Novia: ${reserva.novia.nombre}`,
+    `Fecha: ${fechaLarga(dayKey(reserva.inicio))}, ${timeOf(reserva.inicio)} h (hora de Montevideo)`,
+    `Lugar: ${lugar}`,
+    `Acompañantes: ${reserva.acompanantes} · Pestañas postizas: ${reserva.postizas ? 'sí' : 'no'}`,
+    `Total: ${formatUYU(reserva.total)} · Seña (50 %): ${formatUYU(reserva.sena)} · Saldo: ${formatUYU(reserva.saldo)}`,
+    `Estado: ${reserva.estado}`,
+  ];
+  if (reserva.estado === 'Retenida' && reserva.fechaRetencion) {
+    const vence = new Date(Date.parse(reserva.fechaRetencion) + HORAS_RETENCION * 3600000);
+    lineas.push(`La fecha queda retenida hasta el ${vence.toLocaleString('es-UY', { timeZone: ZONA_NEGOCIO, dateStyle: 'short', timeStyle: 'short' })} (hora de Montevideo) si no se registra la seña.`);
+  }
+  return lineas.join('\n');
+}
+
+export const numeroReserva = (r) => (r.numero ? String(r.numero).padStart(4, '0') : '—');
+
+/** Asigna número correlativo a datos guardados antes de que existiera (sin guardar). */
+export function normalizarCorrelativos(data) {
+  if (Number.isInteger(data.contador)) return data;
+  let n = 0;
+  const reservas = data.reservas.map((r) => (r.numero ? (n = Math.max(n, r.numero), r) : { ...r, numero: ++n }));
+  return { ...data, reservas, contador: Math.max(n, ...reservas.map((r) => r.numero)) };
+}

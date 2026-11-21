@@ -29,7 +29,7 @@ Paleta: `#3A2E2E` (texto), `#FBF7F4` (fondo), `#D8B4A0` (rosa · confirmadas), `
 | `src/storage.js` | Lectura/escritura en localStorage con clave propia y manejo de errores. |
 | `src/App.jsx` | Pantallas: Calendario, Nueva reserva, Detalle, Recursos, Servicios y tarifas, Ajustes. |
 | `build.mjs` | esbuild + compilador de Tailwind → `dist/index.html`. |
-| `test/domain.test.js` | 13 pruebas automatizadas. |
+| `test/domain.test.js` | 15 pruebas automatizadas. |
 
 ## Datos sintéticos
 
@@ -48,21 +48,29 @@ Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(
 ## Almacenamiento
 
 - Clave única: **`kodarvia.agenda-maquilladora.v1`** (JSON con `version`, `recursos`, `servicios`, `reservas`, `tarifas`).
-- «Restaurar datos de prueba» hace `removeItem` **solo de esa clave**; no toca otras aplicaciones.
-- Si `setItem` falla (cuota llena, modo privado, bloqueo), aparece un aviso fijo arriba: *«No se pudo guardar… se perderán si recargás»* con botón **Reintentar guardado**. Los cambios siguen en pantalla.
-- **Cómo probar un guardado fallido**: Ajustes → activar «Simular fallo de guardado» y hacer cualquier cambio (por ejemplo, Guardar tarifas). Al desactivarlo se reintenta el guardado.
+- «Restaurar datos de prueba» reescribe **solo esa clave**; no toca otras aplicaciones (comprobado con una clave ajena que sobrevive).
+- **Cada acción guarda el conjunto completo de datos de la demo** (una sola escritura del JSON). El cambio se aplica en pantalla **solo si esa escritura funcionó**.
+- Si `setItem` falla (cuota llena, modo privado, bloqueo): no se aplica nada, no se muestra éxito, no se ocupan recursos ni avanza el número correlativo. Aparece el aviso *«No se pudo guardar… El cambio no se aplicó»* y el formulario conserva el borrador. El borrador también sobrevive si vas a otra pantalla y volvés.
+- **Cómo probar un guardado fallido**: Ajustes → activar «Simular fallo de guardado» → crear una reserva. Se ve el aviso, la URL no cambia, el borrador queda y `contador` y la cantidad de reservas no cambian. Desactivar la simulación, volver a «Nueva reserva» (aparece «Recuperamos tu borrador») y guardar: recibe el número siguiente.
+
+## Demo, sincronización y compartir
+
+- Es una **demo**: el formulario y la confirmación lo dicen. Guardar no contacta al negocio ni a la novia.
+- Los datos viven solo en el navegador: **no hay cuentas, autenticación ni sincronización entre dispositivos**.
+- Cada reserva tiene un **número correlativo** (`numero`, a partir de `contador`) que solo avanza cuando el guardado funcionó.
+- **Compartir** prepara un texto (servicio, fecha y hora de Montevideo, lugar, total, seña, saldo, estado y vencimiento). Lo envía la persona a mano: «Copiar texto» siempre está disponible, y «Compartir…» abre el menú del dispositivo si el navegador lo permite. Sin envíos automáticos ni API de mensajería.
 
 ## Reglas y pruebas
 
 ### Modelo de datos
 
-- **Reserva**: `id, novia{nombre,email}, servicioId, inicio ("YYYY-MM-DDTHH:mm", hora de Montevideo), lugar (Estudio|Domicilio), direccion, km (int), acompanantes (0–4), postizas (bool), total, sena, saldo, estado (Retenida|Confirmada|Saldo pagado|Cancelada), pagoFueraPlazo (bool), fechaRetencion (ISO UTC)`, más `historial[]`, `pruebaDe` y `canceladaPorVencimiento`.
+- **Reserva**: `id, numero (correlativo), novia{nombre,email}, servicioId, inicio ("YYYY-MM-DDTHH:mm", hora de Montevideo), lugar (Estudio|Domicilio), direccion, km (int), acompanantes (0–4), postizas (bool), total, sena, saldo, estado (Retenida|Confirmada|Saldo pagado|Cancelada), pagoFueraPlazo (bool), fechaRetencion (ISO UTC)`, más `historial[]`, `pruebaDe` y `canceladaPorVencimiento`.
 - **Recurso**: `id, nombre, tipo (Persona|Espacio|Equipo), diasBloqueados[]`, más `principal` (la maquilladora; define «Completo»).
 - **Servicio**: `id, nombre, duracionMin, precioUYU (>0), recursosIds[], admiteDomicilio`, más `tramos[{recursoId, offsetMin, duracionMin}]` y `esPrueba`.
 
 ### Ids, relaciones y estados
 
-- **Ids**: `r-…` recursos, `s-…` servicios, `res-…` reservas (únicos, generados al crear).
+- **Ids**: `r-…` recursos, `s-…` servicios, `res-…` reservas (únicos, generados al crear). Además, cada reserva tiene `numero` correlativo.
 - **Relaciones**: `Reserva.servicioId → Servicio`; `Servicio.tramos[].recursoId → Recurso` (y `recursosIds` derivado); `Reserva.pruebaDe → Reserva` (la prueba apunta a su boda). Un recurso no se puede dar de baja si tiene reservas futuras o lo usa algún servicio, así nunca queda una referencia rota. Los servicios se dan de alta y se editan, no se borran.
 - **Estados de la reserva**: `Retenida → Confirmada → Saldo pagado`, y `Retenida | Confirmada → Cancelada`. `Saldo pagado` y `Cancelada` son finales. Retenida vence sola a las 48 h. Solo los estados activos (Retenida, Confirmada, Saldo pagado) ocupan recursos.
 
@@ -125,7 +133,9 @@ Datos: Novia · Día de boda a las 08:00 en el estudio (maquilladora 0–165 min
 
 En los datos sintéticos este caso está en el sábado Completo (08:00 boda, 11:00 retoque a domicilio).
 
-Prueba automatizada: `test/domain.test.js` → *«Recursos con intervalos propios: caso guiado del briefing»*. Ejecutar con:
+**En la app**: Ajustes → «Ejecutar prueba guiada». Corre sobre una **copia aislada** del catálogo inicial en un sábado sin reservas, muestra esperado vs. observado con ✓ y confirma que los datos guardados no cambiaron (no altera catálogo ni totales).
+
+Pruebas automatizadas: `test/domain.test.js` → *«Recursos con intervalos propios: caso guiado del briefing»*, *«Límite…»* y *«Prueba guiada en copia aislada…»*. Ejecutar con:
 
 ```bash
 npm test
