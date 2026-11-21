@@ -14,9 +14,9 @@ const ESTADO_CHIP = {
 const DIA_BADGE = {
   Libre: 'text-salvia-700 bg-salvia-100',
   Parcial: 'text-oro-700 bg-oro-100',
-  Completo: 'text-white bg-rosa-600',
+  Completo: 'text-white bg-rojo',
 };
-const DIA_PUNTO = { Libre: 'bg-salvia', Parcial: 'bg-oro', Completo: 'bg-rosa-600' };
+const DIA_PUNTO = { Libre: 'bg-salvia', Parcial: 'bg-oro', Completo: 'bg-rojo' };
 
 function useHash() {
   const get = () => (window.location.hash || '#calendario').slice(1);
@@ -33,10 +33,10 @@ function useHash() {
 function Btn({ variant = 'primary', className, ...p }) {
   const v = {
     primary: 'bg-tinta text-crema hover:bg-tinta/90 disabled:bg-tinta/30',
-    gold: 'bg-oro text-white hover:bg-oro-700 disabled:opacity-40',
+    gold: 'bg-oro-700 text-white hover:bg-tinta disabled:opacity-40',
     soft: 'bg-white border border-tinta/15 text-tinta hover:border-oro disabled:opacity-40',
     ghost: 'text-tinta-soft hover:text-tinta hover:bg-tinta/5',
-    danger: 'bg-white border border-rosa-600/50 text-rosa-700 hover:bg-rosa-100 disabled:opacity-40',
+    danger: 'bg-white border border-rojo/50 text-rojo hover:bg-rojo-100 disabled:opacity-40',
   }[variant];
   return <button type="button" className={cx('inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm tracking-wide transition disabled:cursor-not-allowed', v, className)} {...p} />;
 }
@@ -47,11 +47,11 @@ function Field({ label, error, hint, children, htmlFor, className }) {
       <label htmlFor={htmlFor} className="mb-1 block text-xs uppercase tracking-[0.14em] text-tinta-soft">{label}</label>
       {children}
       {hint && !error && <p className="mt-1 text-xs text-tinta-soft">{hint}</p>}
-      {error && <p className="mt-1 text-xs text-rosa-700" role="alert">{error}</p>}
+      {error && <p className="mt-1 text-xs text-rojo" role="alert">{error}</p>}
     </div>
   );
 }
-const inputCls = (err) => cx('w-full rounded-xl border bg-white px-3 py-2.5 text-[15px] text-tinta outline-none transition focus:border-oro focus:ring-2 focus:ring-oro/20', err ? 'border-rosa-600' : 'border-tinta/15');
+const inputCls = (err) => cx('w-full rounded-xl border bg-white px-3 py-2.5 text-[15px] text-tinta outline-none transition focus:border-oro focus:ring-2 focus:ring-oro/20', err ? 'border-rojo' : 'border-tinta/15');
 
 function Card({ className, children }) {
   return <section className={cx('rounded-2xl border border-tinta/10 bg-white/80 p-4 shadow-[0_1px_0_rgba(74,62,58,0.04)] sm:p-6', className)}>{children}</section>;
@@ -167,7 +167,7 @@ export default function App() {
           </nav>
         </div>
         {saveError && (
-          <div role="alert" className="border-t border-rosa-600/30 bg-rosa-100 px-4 py-2 text-sm text-rosa-700">
+          <div role="alert" className="border-t border-rojo/30 bg-rojo-100 px-4 py-2 text-sm text-rojo">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
               <span><strong className="font-medium">No se pudo guardar.</strong> {saveError} Los cambios siguen en pantalla, pero se perderán si recargás.</span>
               <Btn variant="danger" className="py-1" onClick={() => persistir(data)}>Reintentar guardado</Btn>
@@ -270,7 +270,7 @@ function Calendario({ data, go, ahoraWall }) {
                 className={cx('group relative flex min-h-[8.5rem] flex-col gap-1 border-b border-r border-tinta/5 p-1.5 text-left transition hover:bg-rosa-100/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oro lg:p-2', pasado && 'bg-crema/50', (offset + i) % 7 === 6 && 'border-r-0')}
                 aria-label={`${D.fechaLarga(k)}: ${est}, ${rs.length} reservas`}>
                 <div className="flex items-center justify-between gap-1">
-                  <span className={cx('flex h-7 w-7 items-center justify-center rounded-full font-serif text-lg', esHoy ? 'bg-oro text-white' : pasado ? 'text-tinta-soft/60' : 'text-tinta')}>{i + 1}</span>
+                  <span className={cx('flex h-7 w-7 items-center justify-center rounded-full font-serif text-lg', esHoy ? 'bg-oro-700 text-white' : pasado ? 'text-tinta-soft/60' : 'text-tinta')}>{i + 1}</span>
                   <span className={cx('rounded-full px-1.5 py-0.5 text-[10px] tracking-wide', DIA_BADGE[est])}>{est}</span>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -346,7 +346,7 @@ function Timeline({ k, data, destacar }) {
                   const am = (o.inicio - d0) / 60000;
                   return (
                     <a key={o.reservaId + rec.id} href={'#reserva-' + o.reservaId}
-                      className={cx('absolute top-1 bottom-1 overflow-hidden rounded-md px-1.5 text-[10px] leading-[1.15] text-white shadow-sm hover:brightness-105', r?.estado === 'Retenida' ? 'bg-oro' : r?.estado === 'Saldo pagado' ? 'bg-salvia' : 'bg-rosa-600', destacar === o.reservaId && 'ring-2 ring-tinta')}
+                      className={cx('absolute top-1 bottom-1 overflow-hidden rounded-md px-1.5 text-[10px] leading-[1.15] shadow-sm hover:brightness-105', r?.estado === 'Retenida' ? 'border border-dashed border-oro bg-oro-100 text-oro-700' : r?.estado === 'Saldo pagado' ? 'border border-salvia/50 bg-salvia-100 text-salvia-700' : 'bg-rosa text-tinta', destacar === o.reservaId && 'ring-2 ring-tinta')}
                       style={{ left: pct(Math.max(ini, am)), width: `${((b - Math.max(ini, am)) / span) * 100}%` }}
                       title={`${D.hhmm(am)}–${D.hhmm(b)} · ${servicioDe(data, r?.servicioId)?.nombre} · ${r?.novia.nombre}`}>
                       <span className="block truncate pt-0.5 font-normal">{D.hhmm(am)}–{D.hhmm(b)}</span>
@@ -469,7 +469,7 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
             </div>
             {horarios && (
               horarios.length === 0 ? (
-                <div role="alert" className="mt-4 rounded-xl border border-rosa-600/40 bg-rosa-100 px-3 py-2.5 text-sm text-rosa-700">
+                <div role="alert" className="mt-4 rounded-xl border border-rojo/40 bg-rojo-100 px-3 py-2.5 text-sm text-rojo">
                   Ningún horario del {D.fechaLarga(f.fecha)} admite «{servicio.nombre}»{f.acompanantes > 0 ? ` con ${f.acompanantes} acompañante(s)` : ''}: los recursos que necesita no tienen {dur} min libres seguidos entre 08:00 y 20:00, o el día está bloqueado. Probá otra fecha.
                 </div>
               ) : (
@@ -510,7 +510,7 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
               </Field>
               <Field label="Pestañas postizas">
                 <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-tinta/15 bg-white px-3 py-2.5 text-sm">
-                  <input type="checkbox" className="h-4 w-4 accent-[#B8955A]" checked={f.postizas} onChange={(e) => set('postizas', e.target.checked)} />
+                  <input type="checkbox" className="h-4 w-4 accent-[#B8935A]" checked={f.postizas} onChange={(e) => set('postizas', e.target.checked)} />
                   {f.postizas ? 'Sí' : 'No'} <span className="text-tinta-soft">· {D.formatUYU(data.tarifas.postizasUYU)}</span>
                 </label>
               </Field>
@@ -540,12 +540,12 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial }) {
               </div>
             )}
             {rechazo && (
-              <div role="alert" className="mt-4 rounded-xl border border-rosa-600/40 bg-rosa-100 p-3 text-sm text-rosa-700">
+              <div role="alert" className="mt-4 rounded-xl border border-rojo/40 bg-rojo-100 p-3 text-sm text-rojo">
                 <p className="font-medium">No se puede reservar en ese horario:</p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">{rechazo.map((m, i) => <li key={i}>{m}</li>)}</ul>
               </div>
             )}
-            {intentado && Object.keys(errores).length > 0 && <p className="mt-3 text-xs text-rosa-700" role="alert">Revisá los campos marcados.</p>}
+            {intentado && Object.keys(errores).length > 0 && <p className="mt-3 text-xs text-rojo" role="alert">Revisá los campos marcados.</p>}
             <Btn type="submit" variant="gold" className="mt-4 w-full py-3">Guardar reserva</Btn>
             <Btn variant="ghost" className="mt-1 w-full" onClick={() => history.back()}>Volver</Btn>
           </Card>
@@ -649,7 +649,7 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
       </div>
 
       {r.estado === 'Retenida' && (
-        <div className={cx('mb-4 rounded-2xl border px-4 py-3 text-sm', restante < 6 * 3600000 ? 'border-rosa-600/40 bg-rosa-100 text-rosa-700' : 'border-oro/40 bg-oro-100 text-oro-700')}>
+        <div className={cx('mb-4 rounded-2xl border px-4 py-3 text-sm', restante < 6 * 3600000 ? 'border-rojo/40 bg-rojo-100 text-rojo' : 'border-oro/40 bg-oro-100 text-oro-700')}>
           Fecha retenida sin seña. Se cancela sola en <strong className="font-medium">{formatoRestante(restante)}</strong> si no se registra la seña de {D.formatUYU(r.sena)}.
         </div>
       )}
@@ -706,7 +706,7 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
                 <div key={a.id}>
                   {a.id === 'saldo' && fueraDePlazo && (
                     <label className="mb-2 flex items-start gap-2 rounded-xl bg-oro-100 p-2.5 text-xs text-oro-700">
-                      <input type="checkbox" className="mt-0.5 accent-[#B8955A]" checked={fueraPlazo} onChange={(e) => setFueraPlazo(e.target.checked)} />
+                      <input type="checkbox" className="mt-0.5 accent-[#B8935A]" checked={fueraPlazo} onChange={(e) => setFueraPlazo(e.target.checked)} />
                       <span>El plazo para el saldo venció el día anterior al evento. Marcá <strong className="font-medium">«Pago fuera de plazo»</strong> para registrarlo.</span>
                     </label>
                   )}
@@ -714,7 +714,7 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
                 </div>
               ))}
               {acciones.length === 0 && <p className="text-xs text-tinta-soft">Esta reserva está {r.estado === 'Cancelada' ? 'cancelada' : 'cerrada'}; no tiene más cambios de estado.</p>}
-              {error && <p role="alert" className="rounded-xl bg-rosa-100 p-2.5 text-xs text-rosa-700">{error}</p>}
+              {error && <p role="alert" className="rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">{error}</p>}
             </div>
             <div className="mt-4 space-y-2 border-t border-tinta/10 pt-4">
               {!r.pruebaDe && r.estado !== 'Cancelada' && <Btn variant="gold" className="w-full" onClick={abrirPrueba}>Agendar prueba</Btn>}
@@ -727,14 +727,14 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, setToast }) 
       </div>
 
       <Modal open={!!prueba} onClose={() => setPrueba(null)} title="Agendar prueba">
-        {prueba?.error && !prueba.inicio && <p className="rounded-xl bg-rosa-100 p-3 text-sm text-rosa-700">{prueba.error}</p>}
+        {prueba?.error && !prueba.inicio && <p className="rounded-xl bg-rojo-100 p-3 text-sm text-rojo">{prueba.error}</p>}
         {prueba?.inicio && (
           <div className="space-y-3 text-sm">
             <p>Propuesta: <strong className="font-normal">{D.fechaLarga(D.dayKey(prueba.inicio))}</strong> a las <strong className="font-normal">{D.timeOf(prueba.inicio)}</strong> en el estudio ({servicioPrueba?.nombre}, {servicioPrueba?.duracionMin} min).</p>
             {prueba.movida ? (
               <p className="rounded-xl bg-oro-100 p-3 text-oro-700">Un mes antes ({D.fechaCorta(D.dayKey(prueba.propuestaOriginal))} {D.timeOf(prueba.propuestaOriginal)}) no estaba disponible: {prueba.motivoOriginal} Se movió al siguiente día libre.</p>
             ) : <p className="text-tinta-soft">Misma hora, un mes antes del evento.</p>}
-            {prueba.error && <p className="rounded-xl bg-rosa-100 p-3 text-rosa-700">{prueba.error}</p>}
+            {prueba.error && <p className="rounded-xl bg-rojo-100 p-3 text-rojo">{prueba.error}</p>}
             <div className="flex justify-end gap-2 pt-2"><Btn variant="ghost" onClick={() => setPrueba(null)}>Cancelar</Btn><Btn variant="gold" onClick={confirmarPrueba}>Agendar prueba</Btn></div>
           </div>
         )}
@@ -794,7 +794,7 @@ function Recursos({ data, commit, ahoraWall }) {
               </div>
               <p className="mt-3 text-sm text-tinta-soft">{fut} reserva(s) futura(s)</p>
               <p className="mt-1 text-sm text-tinta-soft">Días bloqueados: {rec.diasBloqueados.length ? rec.diasBloqueados.slice().sort().map(D.fechaCorta).join(', ') : 'ninguno'}</p>
-              {aviso?.id === rec.id && <p role="alert" className="mt-3 rounded-xl bg-rosa-100 p-2.5 text-xs text-rosa-700">{aviso.msg}</p>}
+              {aviso?.id === rec.id && <p role="alert" className="mt-3 rounded-xl bg-rojo-100 p-2.5 text-xs text-rojo">{aviso.msg}</p>}
               <div className="mt-4 flex gap-2"><Btn variant="soft" onClick={() => { setAviso(null); setEdit(structuredClone(rec)); }}>Editar</Btn><Btn variant="danger" onClick={() => intentarBaja(rec)}>Dar de baja</Btn></div>
             </Card>
           );
@@ -833,7 +833,7 @@ function RecursoForm({ rec, onClose, onSave }) {
       <div className="space-y-4">
         <Field label="Nombre *" htmlFor="r-nombre" error={err.nombre}><input id="r-nombre" className={inputCls(err.nombre)} value={r.nombre} onChange={(e) => setR({ ...r, nombre: e.target.value })} /></Field>
         <Field label="Tipo *" htmlFor="r-tipo" error={err.tipo} hint="Equipo: se lleva también a domicilio. Espacio: solo se ocupa en el estudio."><select id="r-tipo" className={inputCls(err.tipo)} value={r.tipo} onChange={(e) => setR({ ...r, tipo: e.target.value })}><option>Persona</option><option>Espacio</option><option>Equipo</option></select></Field>
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 accent-[#B8955A]" checked={!!r.principal} onChange={(e) => setR({ ...r, principal: e.target.checked })} /><span>Recurso principal (la maquilladora): define cuándo un día está Completo.</span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 accent-[#B8935A]" checked={!!r.principal} onChange={(e) => setR({ ...r, principal: e.target.checked })} /><span>Recurso principal (la maquilladora): define cuándo un día está Completo.</span></label>
         <Field label="Días bloqueados">
           <div className="flex gap-2"><input type="date" aria-label="Día a bloquear" className={inputCls()} value={dia} onChange={(e) => setDia(e.target.value)} /><Btn variant="soft" disabled={!dia || r.diasBloqueados.includes(dia)} onClick={() => { setR({ ...r, diasBloqueados: [...r.diasBloqueados, dia].sort() }); setDia(''); }}>Agregar</Btn></div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -888,7 +888,7 @@ function Servicios({ data, commit }) {
             setTarErr(null); commit((d) => ({ ...d, tarifas: n }), 'Tarifas guardadas. Se aplican a las reservas nuevas.');
           }}>Guardar tarifas</Btn></div>
         </div>
-        {tarErr && <p role="alert" className="mt-2 text-xs text-rosa-700">{tarErr}</p>}
+        {tarErr && <p role="alert" className="mt-2 text-xs text-rojo">{tarErr}</p>}
       </Card>
       {edit && <ServicioForm s={edit} data={data} onClose={() => setEdit(null)} onSave={(s) => {
         commit((d) => ({ ...d, servicios: s.id ? d.servicios.map((x) => (x.id === s.id ? s : x)) : [...d.servicios, { ...s, id: D.uid('s') }] }), 'Servicio guardado.');
@@ -931,7 +931,7 @@ function ServicioForm({ s, data, onClose, onSave }) {
               const t = tramoDe(r.id);
               return (
                 <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-tinta/10 bg-white px-3 py-2">
-                  <label className="flex min-w-[11rem] flex-1 items-center gap-2 text-sm"><input type="checkbox" className="accent-[#B8955A]" checked={!!t} onChange={(e) => toggle(r.id, e.target.checked)} />{r.nombre}</label>
+                  <label className="flex min-w-[11rem] flex-1 items-center gap-2 text-sm"><input type="checkbox" className="accent-[#B8935A]" checked={!!t} onChange={(e) => toggle(r.id, e.target.checked)} />{r.nombre}</label>
                   {t && <>
                     <label className="flex items-center gap-1 text-xs text-tinta-soft">desde min<input type="number" min="0" step="15" aria-label={`Inicio del tramo de ${r.nombre}`} className="w-20 rounded-lg border border-tinta/15 px-2 py-1 text-sm text-tinta" value={t.offsetMin} onChange={(e) => setTramo(r.id, { offsetMin: e.target.value })} /></label>
                     <label className="flex items-center gap-1 text-xs text-tinta-soft">durante<input type="number" min="15" step="15" aria-label={`Duración del tramo de ${r.nombre}`} className="w-20 rounded-lg border border-tinta/15 px-2 py-1 text-sm text-tinta" value={t.duracionMin} onChange={(e) => setTramo(r.id, { duracionMin: e.target.value })} />min</label>
@@ -943,8 +943,8 @@ function ServicioForm({ s, data, onClose, onSave }) {
         </Field>
         <p className="text-sm text-tinta-soft">Duración total: <span className="text-tinta">{duracion} min</span> (la calcula el tramo que termina más tarde).</p>
         <div className="flex flex-wrap gap-5 text-sm">
-          <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8955A]" checked={!!f.admiteDomicilio} onChange={(e) => setF({ ...f, admiteDomicilio: e.target.checked })} />Admite domicilio</label>
-          <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8955A]" checked={!!f.esPrueba} onChange={(e) => setF({ ...f, esPrueba: e.target.checked })} />Es prueba (lo usa «Agendar prueba»)</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8935A]" checked={!!f.admiteDomicilio} onChange={(e) => setF({ ...f, admiteDomicilio: e.target.checked })} />Admite domicilio</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-[#B8935A]" checked={!!f.esPrueba} onChange={(e) => setF({ ...f, esPrueba: e.target.checked })} />Es prueba (lo usa «Agendar prueba»)</label>
         </div>
         <div className="flex justify-end gap-2 pt-2"><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="gold" onClick={guardarS}>Guardar</Btn></div>
       </div>
@@ -968,7 +968,7 @@ function Ajustes({ data, setData, persistir, setToast }) {
         <h2 className="font-serif text-xl font-light">Probar un guardado fallido</h2>
         <p className="mt-1 text-sm text-tinta-soft">Mientras esté activo, cada guardado falla como si el navegador no tuviera espacio. Hacé cualquier cambio y vas a ver el aviso arriba. No se recuerda al recargar.</p>
         <label className="mt-4 flex items-center gap-3 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-[#B8955A]" checked={fallo} onChange={(e) => { setSimularFallo(e.target.checked); setFallo(e.target.checked); if (!e.target.checked) persistir(data); }} />
+          <input type="checkbox" className="h-4 w-4 accent-[#B8935A]" checked={fallo} onChange={(e) => { setSimularFallo(e.target.checked); setFallo(e.target.checked); if (!e.target.checked) persistir(data); }} />
           Simular fallo de guardado
         </label>
       </Card>

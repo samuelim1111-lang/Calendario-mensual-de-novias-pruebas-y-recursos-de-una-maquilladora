@@ -16,6 +16,10 @@ npm start         # build + servidor estático en http://localhost:3000
 
 También se puede abrir `dist/index.html` directo con doble clic.
 
+## Identidad visual
+
+Paleta: `#3A2E2E` (texto), `#FBF7F4` (fondo), `#D8B4A0` (rosa · confirmadas), `#B8935A` (oro · retenidas), `#6E8B74` (salvia · libre y saldo pagado), `#B5474B` (rojo · Completo y errores), `#FFFFFF` (tarjetas). Los tonos -100/-700 de `src/styles.css` son variantes claras y oscuras de esos mismos colores para fondos suaves y texto con contraste AA. Tipografía: Cormorant Garamond (títulos) y Nunito Sans (texto).
+
 ## Estructura
 
 | Archivo | Qué hace |
