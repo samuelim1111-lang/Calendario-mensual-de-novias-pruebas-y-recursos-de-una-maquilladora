@@ -29,7 +29,7 @@ Paleta: `#3A2E2E` (texto), `#FBF7F4` (fondo), `#D8B4A0` (rosa · confirmadas), `
 | `src/storage.js` | Lectura/escritura en localStorage con clave propia y manejo de errores. |
 | `src/App.jsx` | Pantallas: Calendario, Nueva reserva, Detalle, Recursos, Servicios y tarifas, Ajustes. |
 | `build.mjs` | esbuild + compilador de Tailwind → `dist/index.html`. |
-| `test/domain.test.js` | 12 pruebas automatizadas. |
+| `test/domain.test.js` | 13 pruebas automatizadas. |
 
 ## Datos sintéticos
 
@@ -59,6 +59,16 @@ Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(
 - **Reserva**: `id, novia{nombre,email}, servicioId, inicio ("YYYY-MM-DDTHH:mm", hora de Montevideo), lugar (Estudio|Domicilio), direccion, km (int), acompanantes (0–4), postizas (bool), total, sena, saldo, estado (Retenida|Confirmada|Saldo pagado|Cancelada), pagoFueraPlazo (bool), fechaRetencion (ISO UTC)`, más `historial[]`, `pruebaDe` y `canceladaPorVencimiento`.
 - **Recurso**: `id, nombre, tipo (Persona|Espacio|Equipo), diasBloqueados[]`, más `principal` (la maquilladora; define «Completo»).
 - **Servicio**: `id, nombre, duracionMin, precioUYU (>0), recursosIds[], admiteDomicilio`, más `tramos[{recursoId, offsetMin, duracionMin}]` y `esPrueba`.
+
+### Ids, relaciones y estados
+
+- **Ids**: `r-…` recursos, `s-…` servicios, `res-…` reservas (únicos, generados al crear).
+- **Relaciones**: `Reserva.servicioId → Servicio`; `Servicio.tramos[].recursoId → Recurso` (y `recursosIds` derivado); `Reserva.pruebaDe → Reserva` (la prueba apunta a su boda). Un recurso no se puede dar de baja si tiene reservas futuras o lo usa algún servicio, así nunca queda una referencia rota. Los servicios se dan de alta y se editan, no se borran.
+- **Estados de la reserva**: `Retenida → Confirmada → Saldo pagado`, y `Retenida | Confirmada → Cancelada`. `Saldo pagado` y `Cancelada` son finales. Retenida vence sola a las 48 h. Solo los estados activos (Retenida, Confirmada, Saldo pagado) ocupan recursos.
+
+### Flujo alta → acción → consulta
+
+Alta en «Nueva reserva» (nace Retenida) → acción «Registrar seña» (pasa a Confirmada) → consulta en el detalle y en el calendario. Si falla una validación (email, km, horario, recurso ocupado) o una transición no está permitida, el formulario conserva todo lo cargado y la reserva no cambia de estado: se muestra el motivo y se corrige sin volver a escribir.
 
 ### Regla «recursos con intervalos propios»
 
@@ -111,6 +121,7 @@ Datos: Novia · Día de boda a las 08:00 en el estudio (maquilladora 0–165 min
 | Retoque y fotos a las 11:00 (solo maquilladora) | **Se acepta**: la asistente ocupada no la bloquea |
 | Peinado de novia a las 11:00 (asistente + estudio) | **Se rechaza** con el motivo de la asistente y del estudio |
 | Retoque a las 10:00 | **Se rechaza**: maquilladora ocupada 08:00–10:45 |
+| Límite: peinado a las 12:15 / 12:14 | **Entra** a las 12:15 (la asistente termina justo); a las 12:14 se rechaza. Los intervalos son semiabiertos `[inicio, fin)` |
 
 En los datos sintéticos este caso está en el sábado Completo (08:00 boda, 11:00 retoque a domicilio).
 

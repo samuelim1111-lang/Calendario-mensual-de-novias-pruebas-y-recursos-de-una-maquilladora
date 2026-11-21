@@ -37,6 +37,22 @@ test('Recursos con intervalos propios: caso guiado del briefing', () => {
   assert.match(maq10.motivos[0], /Valentina · Maquilladora no está libre de 08:00 a 10:45/);
 });
 
+test('Límite de «recursos con intervalos propios»: los intervalos que se tocan no chocan', () => {
+  const ctx = { reservas: [res('boda', 's-boda', '08:00')], servicios, recursos };
+  const dom = { lugar: 'Domicilio', km: 5, direccion: 'x' };
+  // Asistente ocupada hasta las 12:15 exactas: a las 12:15 entra, a las 12:14 no.
+  assert.equal(verificarDisponibilidad(res('p', 's-peinado', '12:15', dom), ctx).ok, true);
+  const p1214 = verificarDisponibilidad(res('p', 's-peinado', '12:14', dom), ctx);
+  assert.equal(p1214.ok, false); assert.match(p1214.motivos[0], /Asistente no está libre de 10:45 a 12:15/);
+  // Maquilladora ocupada hasta las 10:45: a las 10:45 entra, a las 10:44 no.
+  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '10:45', dom), ctx).ok, true);
+  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '10:44', dom), ctx).ok, false);
+  // Un servicio que termina justo cuando empieza otro tampoco choca.
+  const conEstudio = { reservas: [res('boda', 's-boda', '10:00')], servicios, recursos };
+  assert.equal(verificarDisponibilidad(res('s', 's-social', '09:00'), conEstudio).ok, true); // termina 10:00 justo
+  assert.equal(verificarDisponibilidad(res('s', 's-social', '09:01'), conEstudio).ok, false);
+});
+
 test('Canceladas no ocupan; días bloqueados y horario se respetan', () => {
   const boda = res('boda', 's-boda', '08:00', { estado: 'Cancelada' });
   assert.equal(verificarDisponibilidad(res('x', 's-social', '09:00'), { reservas: [boda], servicios, recursos }).ok, true);
