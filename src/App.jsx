@@ -177,8 +177,8 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-oro/20 bg-crema/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 pt-3 sm:flex-row sm:items-center sm:justify-between sm:py-3">
           <a href="#calendario" className="flex items-baseline gap-2">
-            <span className="font-serif text-2xl font-light italic text-tinta">Valentina Rey</span>
-            <span className="text-[10px] uppercase tracking-[0.3em] text-oro-700">agenda de novias</span>
+            <span className="font-serif text-2xl font-light italic text-tinta">Agenda de novias</span>
+            <span className="text-[10px] uppercase tracking-[0.3em] text-oro-700">maquillaje · Montevideo</span>
           </a>
           <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 sm:pb-0" aria-label="Secciones">
             {tabs.map(([id, label]) => (

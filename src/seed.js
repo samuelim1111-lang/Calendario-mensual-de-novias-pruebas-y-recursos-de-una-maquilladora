@@ -4,7 +4,7 @@ import {
   addDaysKey, calcularPrecio, dayKey, extrasDe, nowWall, TARIFAS_DEFECTO, verificarDisponibilidad, weekdayOfKey,
 } from './domain.js';
 
-export const VERSION_DATOS = 2;
+export const VERSION_DATOS = 3;
 
 export const RECURSOS_SEED = [
   { id: 'r-maquilladora', nombre: 'Maquilladora titular', tipo: 'Persona', principal: true, diasBloqueados: [] },
@@ -66,9 +66,9 @@ export function crearSeed(instant = new Date()) {
   const reservas = [];
   const ctx = { reservas, servicios, recursos };
   const mk = (servicioId, inicio, estado, extra = {}) => {
-    const [nombre, email] = novias[reservas.length % novias.length];
     const s = servicios.find((x) => x.id === servicioId);
-    const { fechaRetencion: fr, senaRetenida: sr, ...resto } = extra;
+    const { fechaRetencion: fr, senaRetenida: sr, de, ...resto } = extra;
+    const [nombre, email] = de ? [de.novia.nombre, de.novia.email] : novias[reservas.length % novias.length];
     const base = { lugar: s.admiteEstudio === false ? 'Domicilio' : 'Estudio', direccion: '', km: 0, acompanantes: 0, postizas: false, ...resto };
     const p = calcularPrecio({ servicio: s, ...base }, ex.tarifas);
     const numero = reservas.length + 1;
@@ -78,6 +78,7 @@ export function crearSeed(instant = new Date()) {
       fechaRetencion: estado === 'Consulta' ? null : (fr || haceHoras(24 * 6)),
       acompanantesCon: null, historial: [],
     };
+    if (de && s.esPrueba) r.pruebaDe = de.id;
     // Asignación de acompañantes como lo hace la app al retener la fecha.
     if (inicio && estado !== 'Consulta' && estado !== 'Cancelada') {
       r.acompanantesCon = verificarDisponibilidad({ ...r }, ctx).acompanantesCon || null;
@@ -93,28 +94,36 @@ export function crearSeed(instant = new Date()) {
     return r;
   };
 
+  // Fechas que se reservan después del sábado (se calculan primero para enlazar pruebas y retoques).
+  const kRet1 = dia(9); const kAcept = dia(36); const kBouza = dia(44); const kCanc = dia(5); const kCons = dia(58); const kPruebaCons = dia(20);
+  const kReal = pasado(2);
+
   // Sábado Completo: a la maquilladora no le queda ningún hueco de 90 min (y ya tiene 2 novias, el máximo).
-  mk('s-novia-domicilio', `${sab}T08:15`, 'Señada', { direccion: 'Av. Brasil 2850, Pocitos', km: 4, acompanantes: 2, postizas: true });
-  mk('s-novia-estudio', `${sab}T11:15`, 'Saldo pagado', { acompanantes: 1 });
-  mk('s-prueba', `${sab}T14:00`, 'Señada');
-  mk('s-prueba', `${sab}T16:45`, 'Señada');
-  mk('s-retoque', `${sab}T19:00`, 'Señada', { lugar: 'Domicilio', direccion: 'Hotel Carrasco, Rambla República de México 6451', km: 14 });
+  const n1 = mk('s-novia-domicilio', `${sab}T08:15`, 'Señada', { direccion: 'Av. Brasil 2850, Pocitos', km: 4, acompanantes: 2, postizas: true });
+  const n2 = mk('s-novia-estudio', `${sab}T11:15`, 'Saldo pagado', { acompanantes: 1 });
+  // Las dos pruebas del sábado son de novias que se casan dentro de ~5 y ~8 semanas.
+  const pr1 = mk('s-prueba', `${sab}T14:00`, 'Señada');
+  const pr2 = mk('s-prueba', `${sab}T16:45`, 'Señada');
+  // Retoque antes de la ceremonia de la novia de las 11:15, en el hotel de la fiesta.
+  mk('s-retoque', `${sab}T19:00`, 'Señada', { de: n2, lugar: 'Domicilio', direccion: 'Hotel Carrasco, Rambla República de México 6451', km: 14 });
 
   // Fechas retenidas: una a punto de vencer (~2 h) y la del caso de aceptación (30 km, 9:00, 2 acompañantes, pestañas).
-  mk('s-novia-estudio', `${dia(9)}T10:00`, 'Fecha retenida', { fechaRetencion: haceHoras(46) });
-  mk('s-novia-domicilio', `${dia(36)}T09:00`, 'Fecha retenida', { fechaRetencion: haceHoras(3), direccion: 'Camino Carrasco 7120, Carrasco', km: 30, acompanantes: 2, postizas: true });
+  mk('s-novia-estudio', `${kRet1}T10:00`, 'Fecha retenida', { fechaRetencion: haceHoras(46) });
+  const acept = mk('s-novia-domicilio', `${kAcept}T09:00`, 'Fecha retenida', { de: pr1, fechaRetencion: haceHoras(3), direccion: 'Camino Carrasco 7120, Carrasco', km: 30, acompanantes: 2, postizas: true });
+  pr1.pruebaDe = acept.id;
 
-  mk('s-novia-domicilio', `${dia(44)}T16:00`, 'Saldo pagado', { direccion: 'Bodega Bouza, Camino de la Redención 7658', km: 25 });
-  mk('s-novia-estudio', `${dia(5)}T15:00`, 'Cancelada', { senaRetenida: true });
+  const bouza = mk('s-novia-domicilio', `${kBouza}T16:00`, 'Saldo pagado', { de: pr2, direccion: 'Bodega Bouza, Camino de la Redención 7658', km: 25 });
+  pr2.pruebaDe = bouza.id;
+  mk('s-novia-estudio', `${kCanc}T15:00`, 'Cancelada', { senaRetenida: true });
 
-  // Consultas: anotadas sin fecha firme (no ocupan recursos).
-  mk('s-novia-estudio', `${dia(58)}T10:00`, 'Consulta');
+  // Consultas: anotadas sin fecha firme (no ocupan recursos). Una ya pidió hora tentativa para su prueba.
+  const cons = mk('s-novia-estudio', `${kCons}T10:00`, 'Consulta');
   mk('s-novia-domicilio', null, 'Consulta', { direccion: 'Ciudad de la Costa', km: 22, acompanantes: 1 });
-  mk('s-prueba', `${dia(20)}T17:00`, 'Consulta');
+  mk('s-prueba', `${kPruebaCons}T17:00`, 'Consulta', { de: cons });
 
-  // Realizadas (ya pasaron).
-  mk('s-novia-estudio', `${pasado(2)}T11:00`, 'Realizada', { acompanantes: 1 });
-  mk('s-retoque', `${pasado(3)}T17:30`, 'Realizada');
+  // Realizadas (ya pasaron): una novia en estudio y su retoque antes de la ceremonia, el mismo día.
+  const real = mk('s-novia-estudio', `${kReal}T11:00`, 'Realizada', { acompanantes: 1 });
+  mk('s-retoque', `${kReal}T17:30`, 'Realizada', { de: real, lugar: 'Domicilio', direccion: 'Parroquia Stella Maris, Av. Italia 3201', km: 6 });
 
   return { version: VERSION_DATOS, recursos, servicios, reservas, tarifas, contador: reservas.length, creado: instant.toISOString() };
 }

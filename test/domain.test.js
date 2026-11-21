@@ -214,6 +214,20 @@ test('Datos sintéticos: 3 recursos, 6 servicios, 14 reservas sin choques y esta
   assert.equal(vencerRetenidas(seed.reservas, now.getTime()).cambios, 0);
   assert.equal(vencerRetenidas(seed.reservas, now.getTime() + 2.1 * 3600000).cambios, 1);
   assert.ok(reservasFuturasDeRecurso('r-maquilladora', seed, nowWall(now)).length > 0);
+  // Coherencia de los registros no enumerados: cada prueba es de su novia y es antes de su boda;
+  // cada retoque es el mismo día y de la misma novia que un servicio de novia.
+  for (const p of seed.reservas.filter((r) => r.pruebaDe)) {
+    const boda = seed.reservas.find((r) => r.id === p.pruebaDe);
+    assert.ok(boda, `${p.id} apunta a una boda que existe`);
+    assert.equal(p.novia.email, boda.novia.email);
+    assert.ok(!p.inicio || !boda.inicio || p.inicio < boda.inicio, `${p.id} es antes de la boda`);
+  }
+  assert.equal(seed.reservas.filter((r) => r.servicioId === 's-prueba' && !r.pruebaDe).length, 0, 'toda prueba tiene su boda');
+  for (const t of seed.reservas.filter((r) => r.servicioId === 's-retoque')) {
+    const n = seed.reservas.find((r) => r.novia.email === t.novia.email && seed.servicios.find((s) => s.id === r.servicioId)?.esNovia);
+    assert.ok(n && dayKey(n.inicio) === dayKey(t.inicio) && n.inicio < t.inicio, `${t.id}: retoque después de la novia, el mismo día`);
+  }
+  assert.ok(!seed.reservas.some((r) => /Valentina/.test(r.novia.nombre)));
   const aceptacion = seed.reservas.find((r) => r.km === 30);
   assert.deepEqual([aceptacion.total, aceptacion.sena], [17300, 8650]);
   assert.match(textoCompartir(aceptacion, seed.servicios.find((s) => s.id === aceptacion.servicioId)), /Total: \$ 17\.300 · Seña \(50 %\): \$ 8\.650/);
