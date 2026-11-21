@@ -356,10 +356,13 @@ function Calendario({ data, go, ahoraWall, ahoraMs }) {
                 {rs.length === 0 && <p className="mt-1 text-xs text-tinta-soft">{k === hoy ? 'Hoy · sin reservas' : 'Sin reservas visibles'}</p>}
                 <ul className="mt-2 space-y-1.5">
                   {rs.map((r) => (
-                    <li key={r.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-11 shrink-0 font-normal text-tinta">{D.timeOf(r.inicio)}</span>
-                      <span className="min-w-0 flex-1 truncate">{servicioDe(data, r.servicioId)?.nombre} · <span className="text-tinta-soft">{r.novia.nombre}</span></span>
-                      <EstadoChip estado={r.estado} />
+                    <li key={r.id} className="flex items-start gap-2 text-sm">
+                      <span className="w-11 shrink-0 pt-0.5 font-normal text-tinta">{D.timeOf(r.inicio)}</span>
+                      <span className="min-w-0 flex-1 leading-snug" data-testid="fila-lista">
+                        <span className="block">{servicioDe(data, r.servicioId)?.nombre}</span>
+                        <span className="block text-xs text-tinta-soft">{r.novia.nombre}</span>
+                      </span>
+                      <span className="shrink-0"><EstadoChip estado={r.estado} /></span>
                     </li>
                   ))}
                 </ul>

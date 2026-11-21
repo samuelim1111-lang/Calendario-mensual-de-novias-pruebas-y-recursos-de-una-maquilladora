@@ -12,6 +12,12 @@ Agenda mensual para una maquilladora de novias de Montevideo que trabaja en su e
 - Dudas de alcance: **partners@kodarvia.com** (nunca al cliente).
 - Idioma de la interfaz y la documentación: español rioplatense (Argentina), con voseo.
 
+## Acceso para Kodarvia
+
+- El repositorio es **público**: cualquiera con el enlace de arriba puede leerlo y clonarlo, sin invitación.
+- La previsualización en Vercel es pública y se actualiza sola con cada push a `main`.
+- Para invitar formalmente a partners@kodarvia.com como colaborador hace falta que el dueño del repo lo haga desde *Settings → Collaborators* (cuenta de GitHub asociada: `kodarvia`).
+
 ## Stack
 
 - **React 19** + **Tailwind CSS 4** + **localStorage**, sobre **Vite**: la misma base que un proyecto de **Lovable** (React + Vite + Tailwind).
