@@ -780,8 +780,8 @@ function Recursos({ data, commit, ahoraWall }) {
   };
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-3"><H1 sub="La ocupación de cada recurso se calcula por separado.">Recursos</H1><Btn variant="gold" className="mb-5" onClick={() => setEdit({ id: null, nombre: '', tipo: 'Persona', principal: false, diasBloqueados: [] })}>Nuevo recurso</Btn></div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="flex flex-wrap items-end justify-between gap-3"><H1 sub="Maquilladora, asistente, estudio y equipos: la ocupación de cada uno se calcula por separado.">Recursos</H1><Btn variant="gold" className="mb-5" onClick={() => setEdit({ id: null, nombre: '', tipo: 'Persona', principal: false, diasBloqueados: [] })}>Nuevo recurso</Btn></div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {data.recursos.map((rec) => {
           const fut = D.reservasFuturasDeRecurso(rec.id, data, ahoraWall).length;
           return (
@@ -823,7 +823,7 @@ function RecursoForm({ rec, onClose, onSave }) {
   const guardarR = () => {
     const e = {};
     if (!r.nombre.trim()) e.nombre = 'El nombre es obligatorio.';
-    if (!['Persona', 'Espacio'].includes(r.tipo)) e.tipo = 'Elegí Persona o Espacio.';
+    if (!['Persona', 'Espacio', 'Equipo'].includes(r.tipo)) e.tipo = 'Elegí Persona, Espacio o Equipo.';
     if (r.principal && r.tipo !== 'Persona') e.tipo = 'El recurso principal debe ser una persona.';
     setErr(e);
     if (!Object.keys(e).length) onSave({ ...r, nombre: r.nombre.trim() });
@@ -832,7 +832,7 @@ function RecursoForm({ rec, onClose, onSave }) {
     <Modal open title={rec.id ? 'Editar recurso' : 'Nuevo recurso'} onClose={onClose}>
       <div className="space-y-4">
         <Field label="Nombre *" htmlFor="r-nombre" error={err.nombre}><input id="r-nombre" className={inputCls(err.nombre)} value={r.nombre} onChange={(e) => setR({ ...r, nombre: e.target.value })} /></Field>
-        <Field label="Tipo *" htmlFor="r-tipo" error={err.tipo}><select id="r-tipo" className={inputCls(err.tipo)} value={r.tipo} onChange={(e) => setR({ ...r, tipo: e.target.value })}><option>Persona</option><option>Espacio</option></select></Field>
+        <Field label="Tipo *" htmlFor="r-tipo" error={err.tipo} hint="Equipo: se lleva también a domicilio. Espacio: solo se ocupa en el estudio."><select id="r-tipo" className={inputCls(err.tipo)} value={r.tipo} onChange={(e) => setR({ ...r, tipo: e.target.value })}><option>Persona</option><option>Espacio</option><option>Equipo</option></select></Field>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 accent-[#B8955A]" checked={!!r.principal} onChange={(e) => setR({ ...r, principal: e.target.checked })} /><span>Recurso principal (la maquilladora): define cuándo un día está Completo.</span></label>
         <Field label="Días bloqueados">
           <div className="flex gap-2"><input type="date" aria-label="Día a bloquear" className={inputCls()} value={dia} onChange={(e) => setDia(e.target.value)} /><Btn variant="soft" disabled={!dia || r.diasBloqueados.includes(dia)} onClick={() => { setR({ ...r, diasBloqueados: [...r.diasBloqueados, dia].sort() }); setDia(''); }}>Agregar</Btn></div>
@@ -961,7 +961,7 @@ function Ajustes({ data, setData, persistir, setToast }) {
       <H1 sub={`Los datos se guardan en este navegador con la clave «${STORAGE_KEY}». No se tocan otras claves.`}>Ajustes</H1>
       <Card>
         <h2 className="font-serif text-xl font-light">Datos de prueba</h2>
-        <p className="mt-1 text-sm text-tinta-soft">Vuelve a cargar los 3 recursos, 6 servicios y 14 reservas de ejemplo, con fechas calculadas desde hoy. Borra solo los datos de esta agenda.</p>
+        <p className="mt-1 text-sm text-tinta-soft">Vuelve a cargar los 4 recursos, 6 servicios y 14 reservas de ejemplo, con fechas calculadas desde hoy. Borra solo los datos de esta agenda.</p>
         <Btn variant="danger" className="mt-4" onClick={() => setConfirmar(true)}>Restaurar datos de prueba</Btn>
       </Card>
       <Card className="mt-5">

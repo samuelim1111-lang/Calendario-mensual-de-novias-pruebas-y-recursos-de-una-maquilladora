@@ -18,11 +18,11 @@ También se puede abrir `dist/index.html` directo con doble clic.
 | Archivo | Qué hace |
 |---|---|
 | `src/domain.js` | Reglas puras: ocupación por recurso, disponibilidad, estado del día, precios, transiciones, vencimiento, prueba, `.ics`. Sin React ni storage. |
-| `src/seed.js` | Datos sintéticos (3 recursos, 6 servicios, 14 reservas). |
+| `src/seed.js` | Datos sintéticos (4 recursos, 6 servicios, 14 reservas). |
 | `src/storage.js` | Lectura/escritura en localStorage con clave propia y manejo de errores. |
 | `src/App.jsx` | Pantallas: Calendario, Nueva reserva, Detalle, Recursos, Servicios y tarifas, Ajustes. |
 | `build.mjs` | esbuild + compilador de Tailwind → `dist/index.html`. |
-| `test/domain.test.js` | 11 pruebas automatizadas. |
+| `test/domain.test.js` | 12 pruebas automatizadas. |
 
 ## Datos sintéticos
 
@@ -34,6 +34,7 @@ Al abrir por primera vez (o con **Ajustes → Restaurar datos de prueba**) se ll
 - **2 con saldo pagado** (una ya realizada hace 2 días).
 - **9 confirmadas (señadas)**, incluida una prueba de maquillaje generada con la regla «un mes antes».
 - La maquilladora tiene bloqueado el día hoy + 12.
+- Recursos: Valentina (maquilladora, principal), Lucía (asistente), Estudio Pocitos (espacio) y Kit de aerógrafo (equipo), que usan la Prueba de maquillaje (90 min) y la Novia · Civil (primeros 60 min).
 
 Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(...)` en `src/seed.js`, y restaurá desde Ajustes.
 
@@ -49,7 +50,7 @@ Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(
 ### Modelo de datos
 
 - **Reserva**: `id, novia{nombre,email}, servicioId, inicio ("YYYY-MM-DDTHH:mm", hora de Montevideo), lugar (Estudio|Domicilio), direccion, km (int), acompanantes (0–4), postizas (bool), total, sena, saldo, estado (Retenida|Confirmada|Saldo pagado|Cancelada), pagoFueraPlazo (bool), fechaRetencion (ISO UTC)`, más `historial[]`, `pruebaDe` y `canceladaPorVencimiento`.
-- **Recurso**: `id, nombre, tipo (Persona|Espacio), diasBloqueados[]`, más `principal` (la maquilladora; define «Completo»).
+- **Recurso**: `id, nombre, tipo (Persona|Espacio|Equipo), diasBloqueados[]`, más `principal` (la maquilladora; define «Completo»).
 - **Servicio**: `id, nombre, duracionMin, precioUYU (>0), recursosIds[], admiteDomicilio`, más `tramos[{recursoId, offsetMin, duracionMin}]` y `esPrueba`.
 
 ### Regla «recursos con intervalos propios»
@@ -57,7 +58,8 @@ Para reemplazarlos, editá `RECURSOS_SEED`, `SERVICIOS_SEED` y las llamadas `mk(
 Un servicio **no** reserva a todo el equipo durante toda su duración. Cada recurso tiene su propio tramo (minutos desde el inicio). `ocupacionDeReserva` convierte esos tramos en intervalos absolutos y `verificarDisponibilidad` compara **cada recurso solo contra los intervalos de ese mismo recurso** en reservas activas (las canceladas no ocupan).
 
 Ajustes al tramo según la reserva:
-- **Domicilio**: los recursos de tipo Espacio (estudio) no se ocupan.
+- **Domicilio**: los recursos de tipo Espacio (estudio) no se ocupan; las personas y los equipos (aerógrafo) sí, porque viajan.
+- **Equipos**: cada equipo tiene su propio tramo y solo bloquea a los servicios que lo usan. Si el aerógrafo está ocupado de 10:00 a 11:30, un servicio de la asistente que lo necesite a las 10:30 se rechaza por el equipo, y un retoque que solo usa a la maquilladora no se ve afectado.
 - **Acompañantes**: cada una suma 40 min al tramo de la persona de apoyo (la asistente) si el servicio la usa; si no, al de la maquilladora. Los tramos posteriores se corren y los espacios que abarcan el final se estiran.
 - Todo el servicio debe quedar dentro de 08:00–20:00 y ningún recurso puede tener el día bloqueado.
 

@@ -48,6 +48,25 @@ test('Canceladas no ocupan; días bloqueados y horario se respetan', () => {
   assert.equal(horariosDisponibles({ servicioId: 's-social', inicio: `${D}T08:00`, lugar: 'Estudio', acompanantes: 0 }, { reservas: [], servicios, recursos: rb }).length, 0);
 });
 
+test('Equipos: ocupación propia, viajan a domicilio y solo bloquean a quien los usa', () => {
+  const prueba = res('pr', 's-prueba', '10:00');
+  const by = Object.fromEntries(ocupacionDeReserva(prueba, servicios, recursos).map((o) => [o.recursoId, `${hm(o.inicio)}–${hm(o.fin)}`]));
+  assert.equal(by['r-aerografo'], '10:00–11:30');
+  // A domicilio el estudio no se ocupa, pero el aerógrafo sí viaja.
+  const dom = ocupacionDeReserva(res('c', 's-civil', '09:00', { lugar: 'Domicilio', km: 5 }), servicios, recursos).map((o) => o.recursoId);
+  assert.deepEqual(dom.sort(), ['r-aerografo', 'r-maquilladora']);
+  // Servicio de la asistente con aerógrafo: el equipo ocupado lo bloquea; sin solapar, entra.
+  const sv = [...servicios, { id: 's-aero', nombre: 'Aerógrafo asistente', duracionMin: 60, precioUYU: 1, admiteDomicilio: true, tramos: [{ recursoId: 'r-asistente', offsetMin: 0, duracionMin: 60 }, { recursoId: 'r-aerografo', offsetMin: 0, duracionMin: 60 }] }];
+  const ctx = { reservas: [prueba], servicios: sv, recursos };
+  const choca = verificarDisponibilidad(res('a', 's-aero', '10:30', { lugar: 'Domicilio', km: 3 }), ctx);
+  assert.equal(choca.ok, false);
+  assert.match(choca.motivos.join(' '), /Kit de aerógrafo no está libre de 10:00 a 11:30/);
+  assert.ok(!choca.motivos.join(' ').includes('Asistente'));
+  assert.equal(verificarDisponibilidad(res('a', 's-aero', '11:30', { lugar: 'Domicilio', km: 3 }), ctx).ok, true);
+  // Un retoque (solo maquilladora) a las 12:00 no se ve afectado por el equipo.
+  assert.equal(verificarDisponibilidad(res('r', 's-retoque', '12:00', { lugar: 'Domicilio', km: 3 }), ctx).ok, true);
+});
+
 test('Acompañantes extienden a la asistente, no a la maquilladora', () => {
   const occ = ocupacionDeReserva(res('b', 's-boda', '08:00', { acompanantes: 2 }), servicios, recursos);
   const by = Object.fromEntries(occ.map((o) => [o.recursoId, `${hm(o.inicio)}–${hm(o.fin)}`]));
@@ -133,7 +152,7 @@ test('Validación del formulario', () => {
 test('Datos sintéticos: 14 reservas sin choques, sábado Completo, estados pedidos', () => {
   const now = new Date();
   const seed = crearSeed(now);
-  assert.equal(seed.recursos.length, 3); assert.equal(seed.servicios.length, 6); assert.equal(seed.reservas.length, 14);
+  assert.equal(seed.recursos.length, 4); assert.equal(seed.servicios.length, 6); assert.equal(seed.reservas.length, 14);
   const c = (e) => seed.reservas.filter((r) => r.estado === e).length;
   assert.equal(c('Retenida'), 2); assert.equal(c('Cancelada'), 1); assert.equal(c('Saldo pagado'), 2);
   assert.ok(c('Confirmada') >= 4);

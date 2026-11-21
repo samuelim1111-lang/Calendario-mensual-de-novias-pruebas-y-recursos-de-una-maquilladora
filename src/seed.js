@@ -8,6 +8,7 @@ export const RECURSOS_SEED = [
   { id: 'r-maquilladora', nombre: 'Valentina · Maquilladora', tipo: 'Persona', principal: true, diasBloqueados: [] },
   { id: 'r-asistente', nombre: 'Lucía · Asistente', tipo: 'Persona', principal: false, diasBloqueados: [] },
   { id: 'r-estudio', nombre: 'Estudio Pocitos', tipo: 'Espacio', principal: false, diasBloqueados: [] },
+  { id: 'r-aerografo', nombre: 'Kit de aerógrafo', tipo: 'Equipo', principal: false, diasBloqueados: [] },
 ];
 
 // tramos: cada recurso con su propio intervalo dentro del servicio (minutos desde el inicio).
@@ -16,9 +17,9 @@ export const SERVICIOS_SEED = [
   { id: 's-boda', nombre: 'Novia · Día de boda', duracionMin: 255, precioUYU: 18000, admiteDomicilio: true,
     tramos: [t('r-maquilladora', 0, 165), t('r-asistente', 165, 90), t('r-estudio', 0, 255)] },
   { id: 's-civil', nombre: 'Novia · Civil', duracionMin: 120, precioUYU: 11000, admiteDomicilio: true,
-    tramos: [t('r-maquilladora', 0, 120), t('r-estudio', 0, 120)] },
+    tramos: [t('r-maquilladora', 0, 120), t('r-estudio', 0, 120), t('r-aerografo', 0, 60)] },
   { id: 's-prueba', nombre: 'Prueba de maquillaje', duracionMin: 90, precioUYU: 4500, admiteDomicilio: false, esPrueba: true,
-    tramos: [t('r-maquilladora', 0, 90), t('r-estudio', 0, 90)] },
+    tramos: [t('r-maquilladora', 0, 90), t('r-estudio', 0, 90), t('r-aerografo', 0, 90)] },
   { id: 's-peinado', nombre: 'Peinado de novia', duracionMin: 90, precioUYU: 7000, admiteDomicilio: true,
     tramos: [t('r-asistente', 0, 90), t('r-estudio', 0, 90)] },
   { id: 's-social', nombre: 'Maquillaje social', duracionMin: 60, precioUYU: 3500, admiteDomicilio: false,

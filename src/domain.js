@@ -75,7 +75,7 @@ export function nowWall(instant = new Date(), timeZone = ZONA_NEGOCIO) {
 export function tramosEfectivos(servicio, recursos, { lugar = 'Estudio', acompanantes = 0 } = {}) {
   const byId = Object.fromEntries(recursos.map((r) => [r.id, r]));
   let tramos = (servicio.tramos || []).map((t) => ({ ...t, fin: t.offsetMin + t.duracionMin }));
-  // A domicilio no se ocupa ningún espacio (estudio).
+  // A domicilio no se ocupa ningún espacio (estudio); personas y equipos viajan.
   if (lugar === 'Domicilio') tramos = tramos.filter((t) => byId[t.recursoId]?.tipo !== 'Espacio');
   const extra = Math.max(0, acompanantes | 0) * MIN_POR_ACOMPANANTE;
   if (extra > 0) {
