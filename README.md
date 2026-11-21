@@ -20,6 +20,16 @@ También se puede abrir `dist/index.html` directo con doble clic. `qa/e2e.mjs` t
 
 Paleta: `#3A2E2E` (texto), `#FBF7F4` (fondo), `#D8B4A0` (rosa · señadas), `#B8935A` (oro · fechas retenidas), `#6E8B74` (salvia · libre y saldo pagado), `#B5474B` (rojo · Completo y errores), `#FFFFFF` (tarjetas). Los tonos -100/-700 de `src/styles.css` son variantes claras y oscuras de esos mismos colores para fondos suaves y texto con contraste AA. Tipografía: Cormorant Garamond (títulos) y Nunito Sans (texto).
 
+## Tono y estilo
+
+Delicado y prolijo, como una agenda de papel bueno: fondo claro, detalles nude y dorado suave (botones dorados en tono claro, hilo dorado bajo los títulos, «Completo» en rojo suave). Los estados **siempre se escriben**: chips, insignias del día y también las barras de la línea de horas («08:00–10:45 · Señada»). Frases cortas generadas por `fraseDia`, `fraseVence` y `fraseSaldo`:
+
+- «Sábado 28 completo» (franja «Para atender» del calendario y detalle del día)
+- «Fecha retenida, vence en 20 h» (calendario y detalle)
+- «Saldo $ 8.650 hasta el viernes» (calendario, detalle y texto para compartir)
+
+Los importes se muestran como «$ 8.650» (pesos uruguayos).
+
 ## Estructura
 
 | Archivo | Qué hace |
@@ -29,7 +39,7 @@ Paleta: `#3A2E2E` (texto), `#FBF7F4` (fondo), `#D8B4A0` (rosa · señadas), `#B8
 | `src/storage.js` | Lectura/escritura en localStorage con clave propia y manejo de errores. |
 | `src/App.jsx` | Pantallas: Calendario, Nueva reserva, Detalle, Recursos, Servicios y tarifas, Ajustes. |
 | `build.mjs` | esbuild + compilador de Tailwind → `dist/index.html`. |
-| `test/domain.test.js` | 15 pruebas automatizadas. |
+| `test/domain.test.js` | 16 pruebas automatizadas. |
 
 ## Catálogo y configuración inicial
 

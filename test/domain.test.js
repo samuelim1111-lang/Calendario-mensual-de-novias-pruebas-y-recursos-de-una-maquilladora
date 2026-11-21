@@ -167,6 +167,18 @@ test('.ics con fecha, hora, lugar y servicio', () => {
   assert.ok(ics.split('\r\n').every((l) => new TextEncoder().encode(l).length <= 75));
 });
 
+test('Frases cortas', async () => {
+  const { fraseVence, fraseSaldo, fraseDia, fraseHasta } = await import('../src/domain.js');
+  assert.equal(fraseVence(20.5 * 3600000), 'vence en 20 h');
+  assert.equal(fraseVence(35 * 60000), 'vence en 35 min');
+  assert.equal(fraseDia('2027-08-14', 'Completo'), 'Sábado 14 completo');
+  // Evento sábado 2027-03-06 → saldo hasta el viernes 5
+  assert.equal(fraseSaldo({ inicio: '2027-03-06T09:00', saldo: 8650 }, '2027-03-02T10:00'), 'Saldo $ 8.650 hasta el viernes');
+  assert.equal(fraseSaldo({ inicio: '2027-03-06T09:00', saldo: 8650 }, '2027-03-05T10:00'), 'Saldo $ 8.650 hasta hoy');
+  assert.equal(fraseSaldo({ inicio: '2027-03-06T09:00', saldo: 8650 }, '2027-03-06T08:00'), 'Saldo $ 8.650 fuera de plazo');
+  assert.equal(fraseHasta('2027-03-26', '2027-03-02'), 'hasta el viernes 26 de marzo');
+});
+
 test('Validación del formulario', () => {
   const ctx = { reservas: [], servicios, recursos };
   const ok = { nombre: 'Ana', email: 'ana@x.com', servicioId: 's-novia-domicilio', fecha: D, hora: '09:00', lugar: 'Domicilio', direccion: 'Calle 1', km: 30, acompanantes: 2, postizas: true };
@@ -204,5 +216,5 @@ test('Datos sintéticos: 3 recursos, 6 servicios, 14 reservas sin choques y esta
   assert.ok(reservasFuturasDeRecurso('r-maquilladora', seed, nowWall(now)).length > 0);
   const aceptacion = seed.reservas.find((r) => r.km === 30);
   assert.deepEqual([aceptacion.total, aceptacion.sena], [17300, 8650]);
-  assert.match(textoCompartir(aceptacion, seed.servicios.find((s) => s.id === aceptacion.servicioId)), /Total: \$ 17\.300 UYU · Seña \(50 %\): \$ 8\.650 UYU/);
+  assert.match(textoCompartir(aceptacion, seed.servicios.find((s) => s.id === aceptacion.servicioId)), /Total: \$ 17\.300 · Seña \(50 %\): \$ 8\.650/);
 });

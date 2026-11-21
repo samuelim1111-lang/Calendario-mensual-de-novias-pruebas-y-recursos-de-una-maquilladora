@@ -17,7 +17,7 @@ const ESTADO_CHIP = {
 const DIA_BADGE = {
   Libre: 'text-salvia-700 bg-salvia-100',
   Parcial: 'text-oro-700 bg-oro-100',
-  Completo: 'text-white bg-rojo',
+  Completo: 'text-rojo bg-rojo-100 border border-rojo/30',
   Cerrado: 'text-tinta-soft bg-tinta/5',
 };
 const DIA_PUNTO = { Libre: 'bg-salvia', Parcial: 'bg-oro', Completo: 'bg-rojo', Cerrado: 'bg-tinta/20' };
@@ -37,7 +37,7 @@ function useHash() {
 function Btn({ variant = 'primary', className, ...p }) {
   const v = {
     primary: 'bg-tinta text-crema hover:bg-tinta/90 disabled:bg-tinta/30',
-    gold: 'bg-oro-700 text-white hover:bg-tinta disabled:opacity-40',
+    gold: 'bg-oro-100 text-oro-700 border border-oro/60 hover:bg-oro/20 disabled:opacity-40',
     soft: 'bg-white border border-tinta/15 text-tinta hover:border-oro disabled:opacity-40',
     ghost: 'text-tinta-soft hover:text-tinta hover:bg-tinta/5',
     danger: 'bg-white border border-rojo/50 text-rojo hover:bg-rojo-100 disabled:opacity-40',
@@ -71,7 +71,8 @@ function H1({ children, sub }) {
   return (
     <div className="mb-5">
       <h1 className="font-serif text-3xl font-light tracking-wide text-tinta sm:text-4xl">{children}</h1>
-      {sub && <p className="mt-1 text-sm text-tinta-soft">{sub}</p>}
+      <div className="mt-2 h-px w-16 bg-oro/60" aria-hidden="true" />
+      {sub && <p className="mt-2 text-sm text-tinta-soft">{sub}</p>}
     </div>
   );
 }
@@ -207,7 +208,7 @@ export default function App() {
 }
 
 // ---------------- Calendario ----------------
-function Calendario({ data, go, ahoraWall }) {
+function Calendario({ data, go, ahoraWall, ahoraMs }) {
   const hoy = D.dayKey(ahoraWall);
   const [ym, setYm] = useState(() => ({ y: +hoy.slice(0, 4), m: +hoy.slice(5, 7) - 1 }));
   const [fRecurso, setFRecurso] = useState('');
@@ -230,6 +231,17 @@ function Calendario({ data, go, ahoraWall }) {
   const mover = (d) => setYm(({ y, m }) => { const n = m + d; return { y: y + Math.floor(n / 12), m: ((n % 12) + 12) % 12 }; });
   const offset = (D.weekdayOfKey(keys[0]) + 6) % 7; // lunes primero
   const vacioMes = delMes.length === 0;
+  // Frases cortas, como en una agenda: días completos, fechas por vencer y saldos próximos.
+  const limiteSaldos = D.addDaysKey(hoy, 14);
+  const atender = [
+    ...keys.filter((k) => k >= hoy && estados[k] === 'Completo').map((k) => ({ key: 'c' + k, texto: D.fraseDia(k, 'Completo'), tono: 'rojo', abrir: () => setDiaAbierto(k) })),
+    ...data.reservas.filter((r) => r.estado === 'Fecha retenida').sort((a, b) => D.venceEn(a, ahoraMs) - D.venceEn(b, ahoraMs))
+      .map((r) => ({ key: r.id, texto: `Fecha retenida, ${D.fraseVence(D.venceEn(r, ahoraMs))}`, quien: r.novia.nombre, tono: 'oro', href: '#reserva-' + r.id })),
+    ...data.reservas.filter((r) => r.estado === 'Señada' && r.inicio && D.addDaysKey(D.dayKey(r.inicio), -1) <= limiteSaldos && r.inicio >= hoy)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio))
+      .map((r) => ({ key: 's' + r.id, texto: D.fraseSaldo(r, ahoraWall), quien: r.novia.nombre, tono: 'rosa', href: '#reserva-' + r.id })),
+  ].slice(0, 6);
+  const TONO = { rojo: 'border-rojo/30 bg-rojo-100 text-rojo', oro: 'border-oro/50 bg-oro-100 text-oro-700', rosa: 'border-rosa-300 bg-rosa-100 text-rosa-700' };
   const recursoNombre = fRecurso ? recursoDe(data, fRecurso)?.nombre : 'la maquilladora';
 
   return (
@@ -265,6 +277,18 @@ function Calendario({ data, go, ahoraWall }) {
         </div>
       </div>
 
+      {atender.length > 0 && (
+        <section className="mb-4" aria-label="Para atender">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-tinta-soft">Para atender</p>
+          <ul className="flex flex-wrap gap-2">
+            {atender.map((a) => {
+              const cuerpo = <><span className="font-semibold">{a.texto}</span>{a.quien && <span className="opacity-80"> · {a.quien}</span>}</>;
+              const cls = cx('inline-block rounded-full border px-3 py-1 text-xs transition hover:brightness-95', TONO[a.tono]);
+              return <li key={a.key}>{a.href ? <a href={a.href} className={cls}>{cuerpo}</a> : <button type="button" onClick={a.abrir} className={cls}>{cuerpo}</button>}</li>;
+            })}
+          </ul>
+        </section>
+      )}
       {vacioMes && (
         <div className="mb-4 rounded-2xl border border-dashed border-oro/40 bg-white/60 px-4 py-6 text-center">
           <p className="font-serif text-2xl font-light text-tinta">Sin reservas este mes</p>
@@ -301,7 +325,7 @@ function Calendario({ data, go, ahoraWall }) {
                 className={cx('group relative flex min-h-[8.5rem] flex-col gap-1 border-b border-r border-tinta/5 p-1.5 text-left transition hover:bg-rosa-100/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-oro lg:p-2', pasado && 'bg-crema/50', (offset + i) % 7 === 6 && 'border-r-0')}
                 aria-label={`${D.fechaLarga(k)}: ${est}, ${rs.length} reservas`}>
                 <div className="flex items-center justify-between gap-1">
-                  <span className={cx('flex h-7 w-7 items-center justify-center rounded-full font-serif text-lg', esHoy ? 'bg-oro-700 text-white' : pasado ? 'text-tinta-soft/60' : 'text-tinta')}>{i + 1}</span>
+                  <span className={cx('flex h-7 w-7 items-center justify-center rounded-full font-serif text-lg', esHoy ? 'bg-oro-100 text-oro-700 ring-1 ring-oro' : pasado ? 'text-tinta-soft/60' : 'text-tinta')}>{i + 1}</span>
                   <span className={cx('rounded-full px-1.5 py-0.5 text-[10px] tracking-wide', DIA_BADGE[est])}>{est}</span>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -379,8 +403,8 @@ function Timeline({ k, data, destacar }) {
                     <a key={o.reservaId + rec.id} href={'#reserva-' + o.reservaId}
                       className={cx('absolute top-1 bottom-1 overflow-hidden rounded-md px-1.5 text-[10px] leading-[1.15] shadow-sm hover:brightness-105', r?.estado === 'Fecha retenida' ? 'border border-dashed border-oro bg-oro-100 text-oro-700' : r?.estado === 'Saldo pagado' ? 'border border-salvia/50 bg-salvia-100 text-salvia-700' : r?.estado === 'Realizada' ? 'border border-tinta/20 bg-crema-2 text-tinta' : 'bg-rosa text-tinta', destacar === o.reservaId && 'ring-2 ring-tinta')}
                       style={{ left: pct(Math.max(ini, am)), width: `${((b - Math.max(ini, am)) / span) * 100}%` }}
-                      title={`${D.hhmm(am)}–${D.hhmm(b)} · ${servicioDe(data, r?.servicioId)?.nombre} · ${r?.novia.nombre}`}>
-                      <span className="block truncate pt-0.5 font-normal">{D.hhmm(am)}–{D.hhmm(b)}</span>
+                      title={`${D.hhmm(am)}–${D.hhmm(b)} · ${r?.estado} · ${servicioDe(data, r?.servicioId)?.nombre} · ${r?.novia.nombre}`}>
+                      <span className="block truncate pt-0.5 font-semibold">{D.hhmm(am)}–{D.hhmm(b)} · {r?.estado}</span>
                       <span className="block truncate opacity-90">{r?.novia.nombre}</span>
                     </a>
                   );
@@ -405,8 +429,8 @@ function DiaDetalle({ k, onClose, data, go, ahoraWall, fRecurso }) {
   return (
     <Modal open title={cap(D.fechaLarga(k))} onClose={onClose} wide>
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-        <span className={cx('rounded-full px-2.5 py-0.5 text-xs', DIA_BADGE[est])}>{est}</span>
-        {est !== 'Cerrado' && <span className="text-tinta-soft">Novias: {novias}/{D.MAX_NOVIAS_POR_DIA} ·</span>}
+        <span className={cx('rounded-full px-2.5 py-0.5 text-xs', DIA_BADGE[est])}>{D.fraseDia(k, est)}</span>
+        {est !== 'Cerrado' && <span className="text-tinta-soft">Novias: {novias}/{D.MAX_NOVIAS_POR_DIA}</span>}
         {est === 'Cerrado' && <span className="text-tinta-soft">Los lunes no se toman reservas.</span>}
         {principal && est !== 'Cerrado' && <span className="text-tinta-soft">Huecos de {principal.nombre.split(' ·')[0]}: {hs.length ? hs.map(([a, b]) => `${D.hhmm(a)}–${D.hhmm(b)}`).join(', ') : 'ninguno'}</span>}
       </div>
@@ -514,7 +538,7 @@ function NuevaReserva({ data, commit, go, ahoraWall, fechaInicial, setRecienCrea
           <button type="button" className="underline hover:text-tinta" onClick={() => { setBorrador(null); setF({ ...VACIO, fecha: fechaUrl }); }}>Empezar de cero</button>
         </p>
       )}
-      <AvisoDemo className="mb-5">Esto es una demo: al guardar, la reserva queda solo en este navegador. No se contacta al negocio ni a la novia, y no se envía ningún mensaje.</AvisoDemo>
+      <AvisoDemo className="mb-5">Se guarda solo en este navegador. No se avisa al negocio ni a la novia.</AvisoDemo>
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
           <Card>
@@ -782,18 +806,19 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, recienCreada
 
       {recienCreada === r.id && (
         <div role="status" className="mb-4 rounded-2xl border border-salvia/50 bg-salvia-100 px-4 py-3 text-sm text-salvia-700">
-          <p><strong className="font-semibold">{r.estado === 'Consulta' ? 'Consulta' : 'Reserva'} N.º {D.numeroReserva(r)} guardada en esta demo.</strong> Quedó solo en este navegador: no se contactó al negocio ni a la novia.</p>
-          <p className="mt-1">Para avisarle, usá «Compartir» o «Copiar texto» y envíaselo vos.</p>
+          <p><strong className="font-semibold">{r.estado === 'Consulta' ? 'Consulta' : 'Reserva'} N.º {D.numeroReserva(r)} guardada.</strong> Es una demo: no se avisó a nadie.</p>
+          <p className="mt-1">Para avisarle, copiá el texto de «Compartir».</p>
         </div>
       )}
       {r.estado === 'Fecha retenida' && (
         <div className={cx('mb-4 rounded-2xl border px-4 py-3 text-sm', restante < 6 * 3600000 ? 'border-rojo/40 bg-rojo-100 text-rojo' : 'border-oro/40 bg-oro-100 text-oro-700')}>
-          Fecha retenida sin seña. Se cancela sola en <strong className="font-semibold">{formatoRestante(restante)}</strong> si no se registra la seña de {D.formatUYU(r.sena)}.
+          <strong className="font-semibold">Fecha retenida, {D.fraseVence(restante)}.</strong> Sin la seña de {D.formatUYU(r.sena)}, se libera sola.
         </div>
       )}
-      {r.estado === 'Consulta' && <div className="mb-4 rounded-2xl border border-tinta/15 bg-white px-4 py-3 text-sm text-tinta-soft">Consulta anotada sin fecha firme: no ocupa recursos. Para reservar, retené una fecha.</div>}
-      {r.canceladaPorVencimiento && <div className="mb-4 rounded-2xl border border-tinta/10 bg-white px-4 py-3 text-sm text-tinta-soft">Cancelada automáticamente: pasaron 48 h sin seña. Sus recursos quedaron libres.</div>}
-      {r.estado === 'Cancelada' && r.senaRetenida ? <div className="mb-4 rounded-2xl border border-oro/40 bg-oro-100 px-4 py-3 text-sm text-oro-700">Cancelada: la seña de <strong className="font-semibold">{D.formatUYU(r.senaRetenida)}</strong> no se devuelve y queda anotada. Los recursos quedaron libres.</div> : null}
+      {r.estado === 'Señada' && <div className={cx('mb-4 rounded-2xl border px-4 py-3 text-sm', fueraDePlazo ? 'border-rojo/30 bg-rojo-100 text-rojo' : 'border-rosa-300 bg-rosa-100 text-rosa-700')}><strong className="font-semibold">{D.fraseSaldo(r, ahoraWall)}.</strong>{fueraDePlazo ? ' Para registrarlo, marcá «Pago fuera de plazo».' : ''}</div>}
+      {r.estado === 'Consulta' && <div className="mb-4 rounded-2xl border border-tinta/15 bg-white px-4 py-3 text-sm text-tinta-soft"><strong className="font-semibold text-tinta">Consulta sin fecha firme.</strong> No ocupa recursos.</div>}
+      {r.canceladaPorVencimiento && <div className="mb-4 rounded-2xl border border-tinta/10 bg-white px-4 py-3 text-sm text-tinta-soft"><strong className="font-semibold text-tinta">Cancelada sola.</strong> Pasaron 48 h sin seña; recursos libres.</div>}
+      {r.estado === 'Cancelada' && r.senaRetenida ? <div className="mb-4 rounded-2xl border border-oro/40 bg-oro-100 px-4 py-3 text-sm text-oro-700"><strong className="font-semibold">Seña {D.formatUYU(r.senaRetenida)} retenida.</strong> No se devuelve; recursos libres.</div> : null}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
@@ -879,7 +904,7 @@ function DetalleReserva({ data, commit, go, ahoraWall, ahoraMs, id, recienCreada
               </div>
             )}
           </Card>
-          <Compartir texto={D.textoCompartir(r, s)} />
+          <Compartir texto={D.textoCompartir(r, s, ahoraWall)} />
         </aside>
       </div>
 

@@ -314,7 +314,36 @@ export function calcularPrecio({ servicio, lugar, km, acompanantes, postizas }, 
 
 export function formatUYU(n) {
   const entero = Number.isInteger(n);
-  return '$ ' + n.toLocaleString('es-UY', { minimumFractionDigits: entero ? 0 : 2, maximumFractionDigits: 2 }) + ' UYU';
+  return '$ ' + n.toLocaleString('es-UY', { minimumFractionDigits: entero ? 0 : 2, maximumFractionDigits: 2 });
+}
+
+// ---------- Frases cortas ----------
+const capi = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+/** «vence en 20 h» / «vence en 35 min» / «vencida». */
+export function fraseVence(ms) {
+  if (ms <= 0) return 'vencida';
+  const h = Math.floor(ms / 3600000);
+  return h >= 1 ? `vence en ${h} h` : `vence en ${Math.max(1, Math.ceil(ms / 60000))} min`;
+}
+/** «hasta hoy» / «hasta mañana» / «hasta el viernes» / «hasta el viernes 25 de diciembre». null si ya pasó. */
+export function fraseHasta(key, hoyKey) {
+  const diff = Math.round((parseWall(key) - parseWall(hoyKey)) / 86400000);
+  if (diff < 0) return null;
+  if (diff === 0) return 'hasta hoy';
+  if (diff === 1) return 'hasta mañana';
+  const d = new Date(parseWall(key));
+  return diff <= 6 ? `hasta el ${DIAS[d.getUTCDay()]}` : `hasta el ${DIAS[d.getUTCDay()]} ${d.getUTCDate()} de ${MESES[d.getUTCMonth()]}`;
+}
+/** «Saldo $ 8.650 hasta el viernes» (el saldo se espera hasta el día anterior al evento). */
+export function fraseSaldo(r, ahoraWall) {
+  if (!r.inicio) return null;
+  const h = fraseHasta(addDaysKey(dayKey(r.inicio), -1), dayKey(ahoraWall));
+  return `Saldo ${formatUYU(r.saldo)} ${h || 'fuera de plazo'}`;
+}
+/** «Sábado 14 completo». */
+export function fraseDia(key, estado) {
+  const d = new Date(parseWall(key));
+  return `${capi(DIAS[d.getUTCDay()])} ${d.getUTCDate()} ${estado.toLowerCase()}`;
 }
 
 // ---------- Validación ----------
@@ -557,7 +586,7 @@ export function ejecutarPruebaGuiada(recursosBase, serviciosBase, tarifasBase, f
 }
 
 // ---------- Compartir (solo texto; lo envía la persona a mano) ----------
-export function textoCompartir(reserva, servicio) {
+export function textoCompartir(reserva, servicio, ahoraWall = null) {
   const lugar = reserva.lugar === 'Domicilio' ? `${reserva.direccion} (${reserva.km} km)` : 'Estudio';
   const lineas = [
     `Reserva N.º ${numeroReserva(reserva)} · ${servicio?.nombre || 'Servicio'}`,
@@ -570,8 +599,9 @@ export function textoCompartir(reserva, servicio) {
   ];
   if (reserva.estado === 'Fecha retenida' && reserva.fechaRetencion) {
     const vence = new Date(Date.parse(reserva.fechaRetencion) + HORAS_RETENCION * 3600000);
-    lineas.push(`La fecha queda retenida hasta el ${vence.toLocaleString('es-UY', { timeZone: ZONA_NEGOCIO, dateStyle: 'short', timeStyle: 'short' })} (hora de Montevideo) si no se registra la seña.`);
+    lineas.push(`Fecha retenida hasta el ${vence.toLocaleString('es-UY', { timeZone: ZONA_NEGOCIO, dateStyle: 'short', timeStyle: 'short' })} (hora de Montevideo). Sin seña, se libera.`);
   }
+  if (reserva.estado === 'Señada' && ahoraWall) lineas.push(`${fraseSaldo(reserva, ahoraWall)}.`);
   if (reserva.estado === 'Cancelada' && reserva.senaRetenida) lineas.push(`Seña de ${formatUYU(reserva.senaRetenida)} no devuelta.`);
   return lineas.join('\n');
 }
