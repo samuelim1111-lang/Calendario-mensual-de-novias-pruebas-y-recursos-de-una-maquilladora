@@ -1,4 +1,5 @@
-// Empaqueta la app en un único index.html (React + CSS de Tailwind compilado, sin CDN).
+// Variante opcional: empaqueta la app en un único single/index.html (React + Tailwind compilado, sin CDN).
+// La compilación principal es Vite (npm run build), como en Lovable.
 import { build } from 'esbuild';
 import { compile } from 'tailwindcss';
 import fs from 'node:fs/promises';
@@ -45,6 +46,6 @@ const html = `<!DOCTYPE html>
 <script>${code.replace(/<\/script/gi, '<\\/script')}</script>
 </body>
 </html>`;
-await fs.mkdir('dist', { recursive: true });
-await fs.writeFile('dist/index.html', html);
-console.log('dist/index.html', (html.length / 1024).toFixed(0), 'KB · css', (css.length / 1024).toFixed(0), 'KB');
+await fs.mkdir('single', { recursive: true });
+await fs.writeFile('single/index.html', html);
+console.log('single/index.html', (html.length / 1024).toFixed(0), 'KB · css', (css.length / 1024).toFixed(0), 'KB');

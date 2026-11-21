@@ -3,7 +3,7 @@
 **Previsualización:** https://agenda-maquilladora-novias.vercel.app
 **Repositorio:** https://github.com/samuelim1111-lang/Calendario-mensual-de-novias-pruebas-y-recursos-de-una-maquilladora
 
-Agenda mensual para una maquilladora de novias de Montevideo que trabaja en su estudio y a domicilio (hasta 60 km). React 19 + Tailwind CSS 4 + localStorage. Todo el build sale en **un solo `dist/index.html`** sin dependencias de CDN (solo las fuentes de Google).
+Agenda mensual para una maquilladora de novias de Montevideo que trabaja en su estudio y a domicilio (hasta 60 km). React 19 + Tailwind CSS 4 + localStorage. Se compila con **Vite**, como un proyecto de Lovable.
 
 ## Datos y privacidad
 
@@ -12,16 +12,27 @@ Agenda mensual para una maquilladora de novias de Montevideo que trabaja en su e
 - Dudas de alcance: **partners@kodarvia.com** (nunca al cliente).
 - Idioma de la interfaz y la documentación: español rioplatense (Argentina), con voseo.
 
+## Stack
+
+- **React 19** + **Tailwind CSS 4** + **localStorage**, sobre **Vite**: la misma base que un proyecto de **Lovable** (React + Vite + Tailwind).
+- Sin backend: todo vive en el navegador (ver «Almacenamiento»).
+
 ## Cómo correrlo
 
 ```bash
 npm install
+npm run dev       # servidor de desarrollo de Vite en http://localhost:8080
 npm test          # pruebas de dominio (node:test, sin dependencias extra)
-npm run build     # genera dist/index.html
-npm start         # build + servidor estático en http://localhost:3000
+npm run build     # compilación de producción en dist/ (Vite)
+npm run preview   # sirve dist/ para revisarla
+npm run build:single   # opcional: toda la app en un único single/index.html, sin CDN
 ```
 
-También se puede abrir `dist/index.html` directo con doble clic. `qa/e2e.mjs` tiene pruebas de punta a punta con Playwright (opcional).
+`qa/e2e.mjs` (no versionado) tiene pruebas de punta a punta con Playwright sobre `single/index.html`.
+
+## Llevarlo a Lovable
+
+Lovable no importa código existente con un botón: se crea un proyecto nuevo en Lovable, se conecta GitHub y se elige este repositorio; desde ahí Lovable lo lee y sincroniza en los dos sentidos. El proyecto ya tiene la estructura que Lovable espera: `index.html` en la raíz, `vite.config.js`, `src/main.jsx` y Tailwind CSS.
 
 ## Identidad visual
 
@@ -47,7 +58,8 @@ Referencias (interpretadas, sin copiar ningún sitio real): una **agenda de tapa
 | `src/seed.js` | Catálogo del briefing (3 recursos, 6 servicios) y 14 reservas de ejemplo. |
 | `src/storage.js` | Lectura/escritura en localStorage con clave propia y manejo de errores. |
 | `src/App.jsx` | Pantallas: Calendario, Nueva reserva, Detalle, Recursos, Servicios y tarifas, Ajustes. |
-| `build.mjs` | esbuild + compilador de Tailwind → `dist/index.html`. |
+| `vite.config.js`, `index.html` | Compilación con Vite (React + Tailwind), como en Lovable. |
+| `build.mjs` | Variante opcional: esbuild + compilador de Tailwind → `single/index.html`. |
 | `test/domain.test.js` | 16 pruebas automatizadas. |
 
 ## Catálogo y configuración inicial
