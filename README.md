@@ -37,6 +37,8 @@ Delicado y prolijo, como una agenda de papel bueno: fondo claro, detalles nude y
 
 Los importes se muestran como «$ 8.650» (pesos uruguayos).
 
+Referencias (interpretadas, sin copiar ningún sitio real): una **agenda de tapa de tela** (trama de lino muy sutil en la cabecera, clase `.tela`), un **neceser abierto** (tarjetas como compartimentos con un borde interior suave, `.compartimento`) y una **paleta de sombras nude** (la leyenda del calendario son godés redondos de sombra, `.gode`, cada uno con su palabra).
+
 ## Estructura
 
 | Archivo | Qué hace |

@@ -58,7 +58,7 @@ function Field({ label, error, hint, children, htmlFor, className }) {
 const inputCls = (err) => cx('w-full rounded-xl border bg-white px-3 py-2.5 text-[15px] text-tinta outline-none transition focus:border-oro focus:ring-2 focus:ring-oro/20', err ? 'border-rojo' : 'border-tinta/15');
 
 function Card({ className, children }) {
-  return <section className={cx('rounded-2xl border border-tinta/10 bg-white/80 p-4 shadow-[0_1px_0_rgba(74,62,58,0.04)] sm:p-6', className)}>{children}</section>;
+  return <section className={cx('compartimento rounded-2xl border border-tinta/10 bg-white/80 p-4 sm:p-6', className)}>{children}</section>;
 }
 function AvisoDemo({ children, className }) {
   return (
@@ -174,7 +174,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-crema font-sans font-light text-tinta">
-      <header className="sticky top-0 z-30 border-b border-oro/20 bg-crema/90 backdrop-blur">
+      <header className="tela sticky top-0 z-30 border-b border-oro/30 bg-crema-2/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 pt-3 sm:flex-row sm:items-center sm:justify-between sm:py-3">
           <a href="#calendario" className="flex items-baseline gap-2">
             <span className="font-serif text-2xl font-light italic text-tinta">Agenda de novias</span>
@@ -272,7 +272,7 @@ function Calendario({ data, go, ahoraWall, ahoraMs }) {
           </select>
         </Field>
         <div className="flex flex-wrap gap-3 pb-2 text-xs text-tinta-soft sm:ml-auto">
-          {['Libre', 'Parcial', 'Completo', 'Cerrado'].map((s) => <span key={s} className="inline-flex items-center gap-1.5"><span className={cx('h-2 w-2 rounded-full', DIA_PUNTO[s])} />{s}</span>)}
+          {['Libre', 'Parcial', 'Completo', 'Cerrado'].map((s) => <span key={s} className="inline-flex items-center gap-1.5"><span className={cx('gode', DIA_PUNTO[s])} aria-hidden="true" />{s}</span>)}
           <span className="hidden md:inline">· según {recursoNombre}</span>
         </div>
       </div>

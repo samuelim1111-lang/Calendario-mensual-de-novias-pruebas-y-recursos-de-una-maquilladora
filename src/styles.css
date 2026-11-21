@@ -28,3 +28,12 @@
 html { -webkit-tap-highlight-color: transparent; }
 body { margin: 0; background: var(--color-crema); }
 input[type="number"] { -moz-appearance: textfield; }
+
+/* Referencias: tapa de tela (trama de lino muy sutil), godés de sombra (leyenda) y compartimentos de neceser. */
+.tela {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(58, 46, 46, 0.03) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(58, 46, 46, 0.025) 0 1px, transparent 1px 4px);
+}
+.gode { display: inline-block; width: 12px; height: 12px; border-radius: 9999px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), 0 0 0 1px rgba(58, 46, 46, 0.12); }
+.compartimento { box-shadow: inset 0 0 0 4px rgba(244, 235, 229, 0.6); }
